@@ -1,0 +1,2 @@
+playwright>=1.45
+rfc3161ng>=2.1
