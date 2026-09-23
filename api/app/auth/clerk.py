@@ -10,7 +10,9 @@ with :func:`make_test_token`.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 import jwt
@@ -32,14 +34,11 @@ class ClerkClaims:
     azp: str | None
 
 
-_jwks_client: PyJWKClient | None = None
-
-
+@lru_cache(maxsize=8)
 def _get_jwks_client(jwks_url: str) -> PyJWKClient:
-    global _jwks_client
-    if _jwks_client is None:
-        _jwks_client = PyJWKClient(jwks_url)
-    return _jwks_client
+    # Keyed by URL, and lets PyJWKClient cache/rotate signing keys (5-min lifespan) so a
+    # Clerk key rotation is picked up without a process restart.
+    return PyJWKClient(jwks_url, cache_keys=True, lifespan=300)
 
 
 def _decode(token: str, settings: Settings) -> dict:
@@ -48,7 +47,7 @@ def _decode(token: str, settings: Settings) -> dict:
             token,
             TEST_JWT_SECRET,
             algorithms=["HS256"],
-            options={"verify_aud": False},
+            options={"verify_aud": False, "require": ["exp"], "verify_exp": True},
         )
 
     if not settings.clerk_jwks_url:
@@ -84,17 +83,23 @@ def verify_token(token: str, settings: Settings) -> ClerkClaims:
     if not subject:
         raise AuthError("token has no subject")
 
+    # When allowed origins are configured, the authorized-party (azp) claim must be present
+    # AND in the list. Absence is a rejection, not a pass — a token minted for another app
+    # (or one with azp stripped) must not authenticate here.
     azp = payload.get("azp")
     allowed = settings.allowed_origin_list
-    if azp is not None and allowed and azp not in allowed:
+    if allowed and (azp is None or azp not in allowed):
         raise AuthError(f"azp {azp!r} is not an allowed origin")
 
     return ClerkClaims(subject=subject, azp=azp)
 
 
-def make_test_token(clerk_user_id: str, *, azp: str | None = None) -> str:
+def make_test_token(
+    clerk_user_id: str, *, azp: str | None = None, expires_in: int = 3600
+) -> str:
     """Mint an HS256 token for tests (only valid when AUTH_TEST_MODE is on)."""
-    claims: dict = {"sub": clerk_user_id}
+    now = int(time.time())
+    claims: dict[str, Any] = {"sub": clerk_user_id, "iat": now, "exp": now + expires_in}
     if azp is not None:
         claims["azp"] = azp
     return jwt.encode(claims, TEST_JWT_SECRET, algorithm="HS256")

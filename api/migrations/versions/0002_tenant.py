@@ -43,14 +43,32 @@ def upgrade() -> None:
         schema=TENANT_SCHEMA_TOKEN,  # rewritten to the real schema by schema_translate_map
     )
 
-    # Append-only: schema_translate_map does NOT rewrite raw SQL, so use the real (already
-    # validated) schema name here. Revoking from PUBLIC blocks any non-owner app role from
-    # mutating history; in production the app connects as a non-owner role.
+    # Append-only. schema_translate_map does NOT rewrite raw SQL, so use the real (already
+    # validated) schema name here.
     schema = validate_schema_name(current_schema() or "")
+    # 1) A BEFORE UPDATE/DELETE trigger enforces immutability for EVERY role, including the
+    #    table owner (triggers fire regardless of privileges). This is the real guarantee
+    #    today, while the app still connects as the owner (see docs/BACKLOG.md follow-up).
+    op.execute(
+        f'CREATE OR REPLACE FUNCTION "{schema}".audit_log_no_mutate() '
+        "RETURNS trigger AS $$ BEGIN "
+        "RAISE EXCEPTION 'audit_log is append-only'; "
+        "END; $$ LANGUAGE plpgsql"
+    )
+    op.execute(
+        f'CREATE TRIGGER audit_log_no_update_delete '
+        f'BEFORE UPDATE OR DELETE ON "{schema}".audit_log '
+        f'FOR EACH ROW EXECUTE FUNCTION "{schema}".audit_log_no_mutate()'
+    )
+    # 2) Defense in depth: revoke from PUBLIC so a future non-owner app role (vg_app) also
+    #    lacks UPDATE/DELETE at the privilege layer.
     op.execute(f'REVOKE UPDATE, DELETE ON "{schema}".audit_log FROM PUBLIC')
 
 
 def downgrade() -> None:
     if current_scope() != "tenant":
         return
+    schema = validate_schema_name(current_schema() or "")
+    op.execute(f'DROP TRIGGER IF EXISTS audit_log_no_update_delete ON "{schema}".audit_log')
+    op.execute(f'DROP FUNCTION IF EXISTS "{schema}".audit_log_no_mutate()')
     op.drop_table("audit_log", schema=TENANT_SCHEMA_TOKEN)

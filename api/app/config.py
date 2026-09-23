@@ -50,6 +50,12 @@ class Settings(BaseSettings):
                 "AUTH_TEST_MODE=1 is only allowed when APP_ENV is 'dev' or 'test' "
                 f"(got APP_ENV={self.app_env!r}). Refusing to start."
             )
+        # A wildcard origin with credentialed CORS is unsafe; forbid it outside dev/test.
+        # (It would also disable the azp origin check, which keys off this same list.)
+        if "*" in self.allowed_origin_list and self.app_env not in _TEST_AUTH_ALLOWED_ENVS:
+            raise ValueError(
+                "ALLOWED_ORIGINS must not be '*' when APP_ENV is not 'dev'/'test'."
+            )
         return self
 
 

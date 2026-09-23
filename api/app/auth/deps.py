@@ -1,11 +1,15 @@
 """FastAPI auth dependencies: authentication, role checks, and workspace-access checks.
 
-Layering (each step must pass before the next):
-  1. ``get_current_staff``     — valid token → an EXISTING Staff row (unknown staff → 403).
-  2. ``require_role(...)``      — that staff has one of the allowed roles (else 403).
-  3. ``require_workspace_access`` — that staff may reach the path's workspace (else 403),
-                                   resolved BEFORE any tenant session is opened.
-  4. ``get_tenant_session``    — a session bound to that workspace's schema.
+These compose as a dependency GRAPH (not a guaranteed textual order):
+  * ``get_current_staff``       — valid token → an EXISTING Staff row (unknown staff → 403).
+  * ``require_role(...)``        — depends on ``get_current_staff``; checks the role (else 403).
+  * ``require_workspace_access`` — depends on ``get_current_staff``; checks the path's
+                                   workspace grant (else 403).
+  * ``get_tenant_session``      — depends on ``require_workspace_access``, so a tenant
+                                   session is NEVER opened unless access has passed.
+FastAPI caches ``get_current_staff`` per request, so it runs once even when several of
+these are used together. The safety property (no tenant session without access) comes from
+the edge ``get_tenant_session → require_workspace_access``, not from parameter ordering.
 """
 
 from __future__ import annotations
@@ -48,13 +52,16 @@ def get_current_staff(
         staff = session.scalar(
             select(Staff).where(Staff.clerk_user_id == claims.subject)
         )
-    # A valid Clerk identity is NOT access. Staff are provisioned only by an admin;
-    # an unknown (or self-signed-up) user is forbidden, never auto-created.
-    if staff is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="no staff account for this identity",
-        )
+        # A valid Clerk identity is NOT access. Staff are provisioned only by an admin;
+        # an unknown (or self-signed-up) user is forbidden, never auto-created.
+        if staff is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="no staff account for this identity",
+            )
+        # Detach before the session closes; callers read scalar columns only (no lazy
+        # relationship loads, which would raise DetachedInstanceError).
+        session.expunge(staff)
     return staff
 
 

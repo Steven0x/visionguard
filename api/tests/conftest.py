@@ -99,9 +99,15 @@ def client(db: Fixtures) -> Iterator[TestClient]:
         yield test_client
 
 
+# Matches the default ALLOWED_ORIGINS so tokens carry a valid authorized-party claim.
+DEFAULT_TEST_AZP = "http://localhost:5173"
+
+
 @pytest.fixture
-def auth_header() -> Callable[[str], dict[str, str]]:
-    def _make(clerk_user_id: str, *, azp: str | None = None) -> dict[str, str]:
+def auth_header() -> Callable[..., dict[str, str]]:
+    def _make(
+        clerk_user_id: str, *, azp: str | None = DEFAULT_TEST_AZP
+    ) -> dict[str, str]:
         token = make_test_token(clerk_user_id, azp=azp)
         return {"Authorization": f"Bearer {token}"}
 

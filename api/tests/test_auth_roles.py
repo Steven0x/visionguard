@@ -46,6 +46,14 @@ def test_me_rejects_disallowed_azp(
     assert res.status_code == 401
 
 
+def test_me_rejects_missing_azp_when_origins_configured(
+    client: TestClient, auth_header: Header, db: Fixtures
+) -> None:
+    # Absence of azp must fail closed, not pass.
+    res = client.get("/me", headers=auth_header(db.admin_user_id, azp=None))
+    assert res.status_code == 401
+
+
 def test_require_role_rejects_wrong_role() -> None:
     # Unit check of the role gate: a reviewer cannot pass an admin-only dependency.
     dep = require_role(StaffRole.admin)

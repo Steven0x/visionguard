@@ -51,7 +51,7 @@ ignore = ["B008"]
 # S101 (assert) is fine in tests; handled by per-file-ignores below.
 
 [tool.ruff.lint.per-file-ignores]
-"api/tests/**" = ["S101", "S105", "S106"]
+"api/tests/**" = ["S101", "S105", "S106", "S608"]
 "worker/tests/**" = ["S101"]
 
 [tool.mypy]

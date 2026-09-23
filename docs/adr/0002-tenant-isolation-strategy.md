@@ -33,9 +33,14 @@
 
 **`audit_log` is append-only.**
 
-- No update/delete path exists in code. The tenant migration additionally
-  `REVOKE UPDATE, DELETE ON <schema>.audit_log FROM PUBLIC`. In production the app connects
-  as a **non-owner** role so the revoke is effective (an owner retains implicit privileges).
+- No update/delete path exists in code. Two DB-level guards back this:
+  1. A `BEFORE UPDATE OR DELETE` trigger (`audit_log_no_mutate`) that RAISEs. Triggers fire
+     for **every** role including the table owner, so immutability holds today while the app
+     still connects as the owner.
+  2. `REVOKE UPDATE, DELETE ON <schema>.audit_log FROM PUBLIC` — defense in depth for the
+     future non-owner `vg_app` role (an owner keeps implicit privileges, so the REVOKE alone
+     is not sufficient — hence the trigger). Tracked in `docs/BACKLOG.md`.
+- Tested in `api/tests/test_audit_append_only.py`.
 
 ## Limitation (must-follow rule)
 
