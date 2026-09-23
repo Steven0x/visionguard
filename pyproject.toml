@@ -1,0 +1,75 @@
+[project]
+name = "visionguard"
+version = "0.0.0"
+description = "VisionGuard — enforcement product with detection underneath (Phase 1 concierge MVP)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "sqlalchemy>=2.0.30",
+    "alembic>=1.13",
+    "psycopg[binary]>=3.2",
+    "celery>=5.4",
+    "redis>=5.0",
+    "pyjwt>=2.9",
+    "cryptography>=43.0",
+    "httpx>=0.27",
+    "boto3>=1.35",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "honcho>=1.1",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+]
+
+[project.scripts]
+vg = "api.app.cli:app"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["api", "worker"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["api", "worker"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S", "W"]
+# B008: FastAPI relies on `Depends(...)` (and dependency factories) in argument defaults.
+ignore = ["B008"]
+# S101 (assert) is fine in tests; handled by per-file-ignores below.
+
+[tool.ruff.lint.per-file-ignores]
+"api/tests/**" = ["S101", "S105", "S106"]
+"worker/tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+explicit_package_bases = true
+mypy_path = "."
+
+[[tool.mypy.overrides]]
+module = ["api.tests.*", "worker.tests.*"]
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["api/tests", "worker/tests"]
+asyncio_mode = "auto"

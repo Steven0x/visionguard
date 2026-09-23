@@ -20,6 +20,8 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 **Done when:** `make dev` runs everything locally; CI is green; a test proves a query in workspace A can't read workspace B.
 **Agents:** reviewer, red-team
 
+**Follow-up (DB role):** The app must connect as a non-owner DB role (e.g. `vg_app`) so the `audit_log` REVOKE is actually enforced; migrations run as the owner role. Today the app connects as the owner, so the REVOKE is not yet effective.
+
 ## Slice 1: Workspaces and subjects
 
 - Create and edit an agency workspace (name, contact, plan, allowlist)

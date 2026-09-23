@@ -1,0 +1,31 @@
+# Local dev infra only: Postgres (with pgvector) + Redis.
+# Real data lives in Supabase / Upstash — point DATABASE_URL / REDIS_URL there via .env.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: visionguard
+      POSTGRES_PASSWORD: visionguard
+      POSTGRES_DB: visionguard
+    ports:
+      - "5433:5432"  # 5433 on host to avoid clashing with other local Postgres
+    volumes:
+      - vg_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U visionguard -d visionguard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"  # 6380 on host to avoid clashing with other local Redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  vg_pgdata:
