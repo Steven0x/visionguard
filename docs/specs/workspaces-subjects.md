@@ -130,3 +130,22 @@ Every mutation writes one `audit_log` row in the workspace's tenant schema via `
   endpoints.
 - Biometrics fail-closed, handle normalization, CSV limits/BOM/non-text, duplicate detection,
   archive-no-hard-delete, and audit-written are all covered by tests.
+
+## Notes / deferred (from Slice 1 review)
+
+- **`biometrics_blocked` is a GEO block only**, not a consent signal. `biometrics_blocked ==
+  false` means residence permits biometrics — it is necessary but **not sufficient** for face
+  work, which still requires an active biometric `ConsentRecord` (CLAUDE.md #1, Slice 2). Do
+  not treat this flag as "face matching allowed."
+- **CSV formula injection:** imported text (legal_name, notes, etc.) is stored verbatim (no
+  apostrophe-escaping) to avoid corrupting legal names. Neutralization is the **export**
+  layer's responsibility — any CSV/XLSX export (Slice 10 reports) MUST neutralize cells
+  beginning with `= + - @ \t \r`.
+- **Allowlist authorization basis:** `kind` captures the locator type (domain/handle/url/
+  account), not *why* an entry is trusted (own-account vs licensee vs reseller). Slice 5
+  (allowlist enforcement in review) likely needs an explicit `authorization_basis` field so a
+  suppressed match records the legal basis for not filing. `note` is a free-text stopgap.
+- `updated_at` is maintained by the ORM (`onupdate`), not a DB trigger; all writes go through
+  the ORM.
+- Upload bodies are read in capped chunks (`SUBJECT_IMPORT_MAX_BYTES`) so an oversized file
+  can't be buffered whole before the size check.

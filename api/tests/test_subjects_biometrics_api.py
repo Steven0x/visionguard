@@ -20,6 +20,13 @@ def _create(client, auth_header, db, ws, **body):
     )
 
 
+def test_subject_input_has_no_biometrics_field() -> None:
+    # The client cannot even express biometrics_blocked; it is derived server-side.
+    from api.app.routers.subjects import SubjectIn
+
+    assert "biometrics_blocked" not in SubjectIn.model_fields
+
+
 def test_il_residence_is_blocked(
     client: TestClient, auth_header: Header, db: Fixtures, new_workspace: Workspace
 ) -> None:

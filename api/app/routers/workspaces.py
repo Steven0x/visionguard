@@ -15,7 +15,7 @@ from api.app.auth.deps import (
 )
 from api.app.models.audit import AuditLog
 from api.app.models.public import Staff, StaffRole, Workspace
-from api.app.models.subjects import AllowlistKind
+from api.app.models.subjects import AllowlistEntry, AllowlistKind
 from api.app.services import workspaces as ws_service
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
@@ -132,7 +132,7 @@ def list_allowlist(
     workspace: Workspace = Depends(require_workspace_access),
     staff: Staff = Depends(_STAFF),
     session: Session = Depends(get_tenant_session),
-) -> list:
+) -> list[AllowlistEntry]:
     return ws_service.list_allowlist(session)
 
 

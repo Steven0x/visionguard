@@ -131,7 +131,8 @@ def add_allowlist_entry(
         action="allowlist.entry_added",
         entity_type="allowlist_entry",
         entity_id=str(entry.id),
-        meta={"kind": str(kind), "value": entry.value},
+        # Data minimization (CLAUDE.md #7): log the kind + id, not the value payload.
+        meta={"kind": str(kind)},
     )
     return entry
 

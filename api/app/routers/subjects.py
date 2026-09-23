@@ -14,7 +14,7 @@ from api.app.auth.deps import (
     require_role,
     require_workspace_access,
 )
-from api.app.constants import US_STATES
+from api.app.constants import SUBJECT_IMPORT_MAX_BYTES, US_STATES
 from api.app.models.public import Staff, StaffRole, Workspace
 from api.app.models.subjects import Subject, SubjectStatus
 from api.app.services import subjects as subj_service
@@ -23,6 +23,23 @@ from api.app.services.subjects import CsvFileError, CsvRowErrors
 router = APIRouter(prefix="/workspaces/{workspace_id}/subjects", tags=["subjects"])
 
 _STAFF = require_role(StaffRole.admin, StaffRole.reviewer)
+_UPLOAD_CHUNK = 64 * 1024
+
+
+async def _read_capped(file: UploadFile) -> bytes:
+    """Read an upload in chunks, aborting past the byte cap so a huge body can't be
+    buffered whole into memory before the size check."""
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(_UPLOAD_CHUNK):
+        total += len(chunk)
+        if total > SUBJECT_IMPORT_MAX_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"file too large (limit {SUBJECT_IMPORT_MAX_BYTES} bytes)",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -125,7 +142,7 @@ async def import_preview(
     session: Session = Depends(get_tenant_session),
     file: UploadFile = File(...),
 ) -> PreviewResponse:
-    raw = await file.read()
+    raw = await _read_capped(file)
     existing_active = subj_service.list_subjects(session, status_filter="active")
     try:
         rows = subj_service.parse_and_validate(raw, existing_active)
@@ -146,7 +163,7 @@ async def import_commit(
     session: Session = Depends(get_tenant_session),
     file: UploadFile = File(...),
 ) -> ImportResult:
-    raw = await file.read()
+    raw = await _read_capped(file)
     try:
         count = subj_service.import_commit(
             session,
