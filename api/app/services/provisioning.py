@@ -14,10 +14,23 @@ from api.app.db.session import get_engine, public_session
 from api.app.models.public import Workspace
 
 
-def create_workspace(*, name: str, slug: str, plan: str = "starter") -> Workspace:
+def create_workspace(
+    *,
+    name: str,
+    slug: str,
+    plan: str = "starter",
+    contact_name: str | None = None,
+    contact_email: str | None = None,
+) -> Workspace:
     """Create a workspace and bring its tenant schema to the latest migration head."""
     with public_session() as session:
-        workspace = Workspace(name=name, slug=slug, plan=plan)
+        workspace = Workspace(
+            name=name,
+            slug=slug,
+            plan=plan,
+            contact_name=contact_name,
+            contact_email=contact_email,
+        )
         session.add(workspace)
         session.flush()
         workspace_id = workspace.id

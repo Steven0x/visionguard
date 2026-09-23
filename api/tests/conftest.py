@@ -38,7 +38,9 @@ class Fixtures:
     workspace_a: Workspace
     workspace_b: Workspace
     admin_user_id: str
+    admin_staff_id: int
     reviewer_a_user_id: str
+    reviewer_a_staff_id: int
     reviewer_none_user_id: str
 
 
@@ -83,12 +85,13 @@ def db() -> Fixtures:
     )
     grant_workspace_access(staff_id=reviewer_a.id, workspace_id=workspace_a.id)
 
-    _ = admin  # created for completeness; identified by clerk id in tests
     return Fixtures(
         workspace_a=workspace_a,
         workspace_b=workspace_b,
         admin_user_id="admin_user",
+        admin_staff_id=admin.id,
         reviewer_a_user_id="reviewer_a",
+        reviewer_a_staff_id=reviewer_a.id,
         reviewer_none_user_id="reviewer_none",
     )
 
@@ -97,6 +100,22 @@ def db() -> Fixtures:
 def client(db: Fixtures) -> Iterator[TestClient]:
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def new_workspace(db: Fixtures) -> Workspace:
+    """A freshly provisioned workspace (empty tenant schema) for pollution-free tests.
+
+    The seeded admin has all-workspaces access, so admin tokens can reach it immediately.
+    """
+    import uuid
+
+    from api.app.services.workspaces import create_workspace_with_access
+
+    slug = f"t-{uuid.uuid4().hex[:10]}"
+    return create_workspace_with_access(
+        name=f"Fresh {slug}", creator_staff_id=db.admin_staff_id, slug=slug
+    )
 
 
 # Matches the default ALLOWED_ORIGINS so tokens carry a valid authorized-party claim.

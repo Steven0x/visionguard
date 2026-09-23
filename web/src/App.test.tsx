@@ -21,6 +21,8 @@ vi.mock("./api", () => ({
       all_workspaces: true,
     }),
   ),
+  listWorkspaces: vi.fn(() => Promise.resolve([])),
+  createWorkspace: vi.fn(),
 }));
 
 describe("App", () => {
@@ -28,12 +30,12 @@ describe("App", () => {
     vi.clearAllMocks();
   });
 
-  it("shows the signed-in staff member from GET /me", async () => {
+  it("shows the signed-in staff member and the workspaces console", async () => {
     render(<App />);
+    expect(screen.getByRole("heading", { name: "VisionGuard" })).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "VisionGuard" }),
+      await screen.findByText(/staff@visionguard.test \(admin\)/),
     ).toBeInTheDocument();
-    expect(await screen.findByText("staff@visionguard.test")).toBeInTheDocument();
-    expect(screen.getByText(/role: admin/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Workspaces" })).toBeInTheDocument();
   });
 });
