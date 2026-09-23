@@ -18,6 +18,7 @@ dist/
 # Node
 node_modules/
 web/dist/
+*.tsbuildinfo
 *.local
 
 # OS / editors
