@@ -89,9 +89,38 @@ def test_download_returns_signed_url_and_audits(
 def test_reviewer_without_access_cannot_download(
     client, auth_header, db: Fixtures, new_workspace: Workspace
 ):
-    # reviewer_a has no access to the freshly created workspace.
+    # A real record exists; reviewer_a has no access → must be 403 (access), not 404.
+    sid = _subject(client, auth_header, db, new_workspace)
+    rid = _post_rights(client, auth_header, db, new_workspace, sid, _PDF).json()["id"]
     res = client.get(
-        f"/workspaces/{new_workspace.id}/subjects/1/rights/1/file",
+        f"/workspaces/{new_workspace.id}/subjects/{sid}/rights/{rid}/file",
         headers=auth_header(db.reviewer_a_user_id),
     )
     assert res.status_code == 403
+
+
+def test_authorization_document_download_and_attestation_404(
+    client, auth_header, db: Fixtures, new_workspace: Workspace
+):
+    hdr = auth_header(db.admin_user_id)
+    base = f"/workspaces/{new_workspace.id}/authorizations"
+
+    with_file = client.post(
+        base,
+        headers=hdr,
+        data={"signer_name": "S", "authorized_date": "2026-01-01"},
+        files={"file": ("a.pdf", _PDF, "application/octet-stream")},
+    ).json()
+    dl = client.get(f"{base}/{with_file['id']}/file", headers=hdr)
+    assert dl.status_code == 200
+    assert dl.json()["url"].startswith("http")
+
+    # Attestation-only authorization (no file) → 404 on /file.
+    attestation = client.post(
+        base, headers=hdr, data={"signer_name": "S", "authorized_date": "2026-01-01"}
+    ).json()
+    assert client.get(f"{base}/{attestation['id']}/file", headers=hdr).status_code == 404
+
+    with tenant_session(new_workspace.schema_name) as s:
+        actions = set(s.scalars(select(AuditLog.action)).all())
+    assert "document.downloaded" in actions

@@ -82,15 +82,14 @@ def test_nothing_supported_without_authorization(db, new_workspace: Workspace) -
     assert not any(support.values())
 
 
-def test_management_agreement_alone_does_not_support_copyright(
+def test_management_agreement_or_other_alone_does_not_support_copyright(
     db, new_workspace: Workspace
 ) -> None:
-    support, _ = _support(
-        new_workspace.schema_name,
-        rights=({"type": RightsType.management_agreement},),
-        workspace_auth=True,
-    )
-    assert support["copyright"] is False
+    for rtype in (RightsType.management_agreement, RightsType.other):
+        support, _ = _support(
+            new_workspace.schema_name, rights=({"type": rtype},), workspace_auth=True
+        )
+        assert support["copyright"] is False
 
 
 def test_photographer_license_requires_enforcement_right_flag(
@@ -169,6 +168,24 @@ def test_subject_level_authorization_enables_enforcement(
 ) -> None:
     _, enforceable = _support(new_workspace.schema_name, subject_auth=True)
     assert enforceable is True
+
+
+def test_future_dated_authorization_is_not_yet_active(
+    db, new_workspace: Workspace
+) -> None:
+    with tenant_session(new_workspace.schema_name) as s:
+        subject = Subject(legal_name="s")
+        s.add(subject)
+        s.flush()
+        s.add(
+            AgentAuthorization(
+                subject_id=subject.id,
+                signer_name="a",
+                authorized_date=date.today() + timedelta(days=30),
+            )
+        )
+        s.flush()
+        assert subject_enforcement(s, subject)["enforceable"] is False
 
 
 def test_subject_level_auth_does_not_leak_to_other_subject(

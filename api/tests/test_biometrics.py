@@ -61,6 +61,39 @@ def test_unblocked_alone_does_not_imply_consent(db, new_workspace: Workspace) ->
     assert status["biometric_features_enabled"] is False
 
 
+def test_service_refuses_biometric_consent_for_blocked_subject(
+    db, new_workspace: Workspace
+) -> None:
+    from sqlalchemy import func
+
+    with tenant_session(new_workspace.schema_name) as s:
+        subject = Subject(legal_name="blocked", biometrics_blocked=True)
+        s.add(subject)
+        s.flush()
+        sid = subject.id
+        with pytest.raises(consent_service.BiometricConsentBlocked):
+            consent_service.create_consent_record(
+                s,
+                workspace_id=new_workspace.id,
+                schema=new_workspace.schema_name,
+                actor_staff_id=db.admin_staff_id,
+                subject_id=sid,
+                type=ConsentType.biometric,
+                data=b"%PDF-1.4",
+                content_type="application/pdf",
+                file_name="c.pdf",
+                signer_name="x",
+                signed_date=_TODAY,
+            )
+        # Nothing was written.
+        count = s.scalar(
+            select(func.count()).select_from(ConsentRecord).where(
+                ConsentRecord.subject_id == sid
+            )
+        )
+    assert count == 0
+
+
 def _make_consent(schema: str, consent_type: ConsentType) -> int:
     with tenant_session(schema) as s:
         subject = Subject(legal_name="s")

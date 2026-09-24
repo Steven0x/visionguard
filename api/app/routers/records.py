@@ -27,6 +27,7 @@ from api.app.services import claim_support as claim_service
 from api.app.services import consent as consent_service
 from api.app.services import rights as rights_service
 from api.app.services import subjects as subj_service
+from api.app.services.consent import BiometricConsentBlocked
 from api.app.services.documents import signed_download_url
 from api.app.uploads import (
     UnsupportedFileType,
@@ -109,7 +110,7 @@ class ClaimSupportOut(BaseModel):
 
 
 class ClaimSupportResponse(BaseModel):
-    matrix_status: str = "draft — pending counsel"
+    matrix_status: str
     claims: list[ClaimSupportOut]
     enforcement: dict
     biometrics: dict
@@ -273,29 +274,26 @@ async def create_consent(
     staff: Staff = Depends(_STAFF),
     session: Session = Depends(get_tenant_session),
 ) -> ConsentRecord:
-    subject = subj_service.get_subject(session, subject_id)
-    if subject is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="subject not found")
-    # Geo exclusion (CLAUDE.md #9): no biometric consent for a geo-blocked subject.
-    if type == ConsentType.biometric and subject.biometrics_blocked:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="biometric consent is blocked for this subject's residence",
-        )
+    _require_subject(session, subject_id)
     data, content_type, file_name = await _read_document(file)
-    return consent_service.create_consent_record(
-        session,
-        workspace_id=workspace.id,
-        schema=workspace.schema_name,
-        actor_staff_id=staff.id,
-        subject_id=subject_id,
-        type=type,
-        data=data,
-        content_type=content_type,
-        file_name=file_name,
-        signer_name=signer_name,
-        signed_date=signed_date,
-    )
+    try:
+        return consent_service.create_consent_record(
+            session,
+            workspace_id=workspace.id,
+            schema=workspace.schema_name,
+            actor_staff_id=staff.id,
+            subject_id=subject_id,
+            type=type,
+            data=data,
+            content_type=content_type,
+            file_name=file_name,
+            signer_name=signer_name,
+            signed_date=signed_date,
+        )
+    except BiometricConsentBlocked as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
 
 
 @router.get(
@@ -515,6 +513,7 @@ def get_claim_support(
         for c in claim_service.claim_support(session, subject)
     ]
     return ClaimSupportResponse(
+        matrix_status=claim_service.MATRIX_STATUS,
         claims=claims,
         enforcement=claim_service.subject_enforcement(session, subject),
         biometrics=claim_service.biometric_status(session, subject),

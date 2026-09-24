@@ -65,6 +65,9 @@ class Settings(BaseSettings):
             raise ValueError(
                 "ALLOWED_ORIGINS must not be '*' when APP_ENV is not 'dev'/'test'."
             )
+        # Presigned document URLs must be short-lived; cap at 15 minutes.
+        if not 0 < self.storage_signed_url_ttl_seconds <= 900:
+            raise ValueError("STORAGE_SIGNED_URL_TTL_SECONDS must be between 1 and 900.")
         return self
 
 

@@ -21,6 +21,8 @@ class RightsType(enum.StrEnum):
 
 class RightsStatus(enum.StrEnum):
     active = "active"
+    # `expired` is a display label only; claim-support derivation is driven by `expires_on`
+    # (see services/claim_support._counting_rights), never by this value.
     expired = "expired"
     revoked = "revoked"
 

@@ -21,6 +21,11 @@ export function ClaimSupportPanel({ data }: { data: ClaimSupportResponse }) {
         )}
       </p>
 
+      <p className="text-xs text-gray-500">
+        “supported” means the legal-basis records are present — <strong>not cleared to
+        file</strong>. Identity verification, fair-use and allowlist checks are still pending.
+      </p>
+
       <ul className="space-y-1 text-sm">
         {data.claims.map((c) => (
           <li key={c.claim_type} data-testid={`claim-${c.claim_type}`}>

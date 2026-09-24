@@ -39,6 +39,8 @@ def active_authorization(
         select(AgentAuthorization)
         .where(
             AgentAuthorization.status == RecordStatus.active,
+            # A future-dated authorization is not yet effective.
+            AgentAuthorization.authorized_date <= date.today(),
             or_(
                 AgentAuthorization.subject_id.is_(None),
                 AgentAuthorization.subject_id == subject_id,

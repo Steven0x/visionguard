@@ -9,8 +9,13 @@ from sqlalchemy.orm import Session
 
 from api.app.audit.service import record_audit
 from api.app.models.rights import ConsentRecord, ConsentType, RecordStatus
+from api.app.models.subjects import Subject
 from api.app.services.biometrics import purge_biometric_data
 from api.app.services.documents import audit_upload, signed_download_url, store_document
+
+
+class BiometricConsentBlocked(Exception):
+    """Biometric consent for a geo-blocked (IL/WA) subject is refused (CLAUDE.md #9)."""
 
 
 def list_consent(session: Session, subject_id: int) -> list[ConsentRecord]:
@@ -41,6 +46,13 @@ def create_consent_record(
     signer_name: str,
     signed_date: date,
 ) -> ConsentRecord:
+    # Geo exclusion (CLAUDE.md #9) enforced at the service layer so no caller can bypass it.
+    if type == ConsentType.biometric:
+        subject = session.get(Subject, subject_id)
+        if subject is not None and subject.biometrics_blocked:
+            raise BiometricConsentBlocked(
+                "biometric consent is blocked for this subject's residence"
+            )
     key = store_document(schema, "consent", data, content_type)
     record = ConsentRecord(
         subject_id=subject_id,

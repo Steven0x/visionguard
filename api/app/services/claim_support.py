@@ -26,6 +26,10 @@ from api.app.services.authorizations import active_authorization
 
 CLAIM_TYPES = ("copyright", "trademark", "likeness", "ncii", "impersonation")
 
+# Single source of truth for the matrix approval state surfaced to the API/UI. Update this
+# (and the banner in docs/legal/claims-matrix.md) together when counsel signs off.
+MATRIX_STATUS = "draft — pending counsel"
+
 # Rights types that prove ownership for a copyright claim. A management_agreement grants
 # representation, not ownership; a photographer_license only counts if it explicitly grants
 # the enforcement right (checked separately).
