@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     # Redis (worker)
     redis_url: str = "redis://localhost:6379/0"
 
+    # Object storage (S3-compatible: MinIO in dev/tests, Cloudflare R2 in prod)
+    storage_endpoint_url: str = "http://localhost:9000"
+    storage_access_key_id: str = "minioadmin"
+    storage_secret_access_key: str = "minioadmin"  # noqa: S105 - local dev default
+    storage_bucket: str = "vg-assets"
+    storage_region: str = "us-east-1"
+    storage_signed_url_ttl_seconds: int = 300
+    storage_max_upload_bytes: int = 15_000_000
+
     @property
     def allowed_origin_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]

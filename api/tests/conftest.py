@@ -64,6 +64,11 @@ def db() -> Fixtures:
     _reset_database()
     upgrade_all()  # build the public schema
 
+    # Ensure the object-storage bucket exists (MinIO in dev/tests).
+    from api.app.storage import get_storage
+
+    get_storage().ensure_bucket()
+
     workspace_a = create_workspace(name="Agency A", slug="agency-a")
     workspace_b = create_workspace(name="Agency B", slug="agency-b")
 

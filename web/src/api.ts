@@ -172,3 +172,118 @@ export const commitImport = (token: string, id: number, file: File) =>
     `/workspaces/${id}/subjects/import/commit`,
     { method: "POST", body: fileForm(file) },
   );
+
+// ── Slice 2: rights, consent, authorizations, claim support ──────────────────
+
+export interface ClaimSupport {
+  claim_type: string;
+  supported: boolean;
+  missing: string[];
+}
+
+export interface ClaimSupportResponse {
+  matrix_status: string;
+  claims: ClaimSupport[];
+  enforcement: { enforceable: boolean; active_authorization_id: number | null };
+  biometrics: {
+    active_biometric_consent: boolean;
+    biometrics_blocked: boolean;
+    biometric_features_enabled: boolean;
+  };
+}
+
+export interface RightsRecord {
+  id: number;
+  type: string;
+  grants_enforcement_right: boolean;
+  file_name: string;
+  rights_date: string | null;
+  expires_on: string | null;
+  coverage: string | null;
+  status: string;
+}
+
+export interface ConsentRecord {
+  id: number;
+  type: string;
+  file_name: string;
+  signer_name: string;
+  signed_date: string;
+  status: string;
+}
+
+export interface Authorization {
+  id: number;
+  subject_id: number | null;
+  signer_name: string;
+  authorized_date: string;
+  status: string;
+  notes: string | null;
+  has_file: boolean;
+}
+
+const base = (wsId: number, sid: number) => `/workspaces/${wsId}/subjects/${sid}`;
+
+export const getClaimSupport = (token: string, wsId: number, sid: number) =>
+  request<ClaimSupportResponse>(token, `${base(wsId, sid)}/claim-support`);
+
+export const listRights = (token: string, wsId: number, sid: number) =>
+  request<RightsRecord[]>(token, `${base(wsId, sid)}/rights`);
+
+export const createRights = (token: string, wsId: number, sid: number, form: FormData) =>
+  request<RightsRecord>(token, `${base(wsId, sid)}/rights`, { method: "POST", body: form });
+
+export const revokeRights = (
+  token: string,
+  wsId: number,
+  sid: number,
+  rid: number,
+  reason: string,
+) =>
+  request<RightsRecord>(token, `${base(wsId, sid)}/rights/${rid}/revoke`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+
+export const rightsFileUrl = (token: string, wsId: number, sid: number, rid: number) =>
+  request<{ url: string }>(token, `${base(wsId, sid)}/rights/${rid}/file`);
+
+export const listConsent = (token: string, wsId: number, sid: number) =>
+  request<ConsentRecord[]>(token, `${base(wsId, sid)}/consent`);
+
+export const createConsent = (token: string, wsId: number, sid: number, form: FormData) =>
+  request<ConsentRecord>(token, `${base(wsId, sid)}/consent`, { method: "POST", body: form });
+
+export const revokeConsent = (
+  token: string,
+  wsId: number,
+  sid: number,
+  cid: number,
+  reason: string,
+) =>
+  request<ConsentRecord>(token, `${base(wsId, sid)}/consent/${cid}/revoke`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+
+export const listSubjectAuthorizations = (token: string, wsId: number, sid: number) =>
+  request<Authorization[]>(token, `${base(wsId, sid)}/authorizations`);
+
+export const listWorkspaceAuthorizations = (token: string, wsId: number) =>
+  request<Authorization[]>(token, `/workspaces/${wsId}/authorizations`);
+
+export const createSubjectAuthorization = (
+  token: string,
+  wsId: number,
+  sid: number,
+  form: FormData,
+) => request<Authorization>(token, `${base(wsId, sid)}/authorizations`, { method: "POST", body: form });
+
+export const createWorkspaceAuthorization = (token: string, wsId: number, form: FormData) =>
+  request<Authorization>(token, `/workspaces/${wsId}/authorizations`, { method: "POST", body: form });
+
+export const revokeAuthorization = (token: string, wsId: number, aid: number, reason: string) =>
+  request<Authorization>(token, `/workspaces/${wsId}/authorizations/${aid}/revoke`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });

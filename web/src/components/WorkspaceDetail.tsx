@@ -11,6 +11,7 @@ import {
   type WorkspaceDetail as Detail,
 } from "../api";
 import { useToken } from "../useToken";
+import { SubjectDetail } from "./SubjectDetail";
 import { SubjectImport } from "./SubjectImport";
 
 const splitList = (v: string) =>
@@ -32,6 +33,7 @@ export function WorkspaceDetail({
   const [detail, setDetail] = useState<Detail | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [showArchived, setShowArchived] = useState(false);
+  const [openSubject, setOpenSubject] = useState<Subject | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -67,6 +69,21 @@ export function WorkspaceDetail({
   };
 
   if (!detail) return <p className="text-gray-500">Loading…{error}</p>;
+
+  if (openSubject) {
+    return (
+      <SubjectDetail
+        workspaceId={workspaceId}
+        subjectId={openSubject.id}
+        subjectName={openSubject.legal_name}
+        isAdmin={isAdmin}
+        onBack={() => {
+          setOpenSubject(null);
+          void reload();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -105,7 +122,11 @@ export function WorkspaceDetail({
           <tbody>
             {subjects.map((s) => (
               <tr key={s.id} className="border-t border-gray-100">
-                <td className="p-1">{s.legal_name}</td>
+                <td className="p-1">
+                  <button className="text-blue-700" onClick={() => setOpenSubject(s)}>
+                    {s.legal_name}
+                  </button>
+                </td>
                 <td className="p-1">{s.handles.join(", ")}</td>
                 <td className="p-1">{s.residence_state ?? "—"}</td>
                 <td className="p-1">

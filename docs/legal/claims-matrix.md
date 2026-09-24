@@ -50,3 +50,5 @@ Follow the platform's Take It Down Act process: identification of the content, a
 - [ ] State right-of-publicity coverage for the launch states (NY, CA, FL)
 - [ ] Recovery fee structure and fee-splitting compliance
 - [ ] Retention periods for evidence and for intimate-image hashes
+- [ ] **Copyright chain of title:** a management agreement grants representation, not ownership — the photographer usually owns the photos. The product therefore supports `copyright` only from a `self_owned_declaration`, a `copyright_registration`, or a `photographer_license` that explicitly grants the enforcement right (a `grants_enforcement_right` flag on the rights record). Confirm this is the right bar, and what license language suffices to "grant the enforcement right".
+- [ ] **Expiry & revocation of rights:** rights records carry an optional `expires_on` and can be revoked; expired or revoked records confer no claim support. Confirm the treatment of lapsed licenses/agreements and any notice obligations when support lapses mid-enforcement.
