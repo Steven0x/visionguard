@@ -27,11 +27,13 @@ from api.app.services import claim_support as claim_service
 from api.app.services import consent as consent_service
 from api.app.services import rights as rights_service
 from api.app.services import subjects as subj_service
+from api.app.services.documents import signed_download_url
 from api.app.uploads import (
     UnsupportedFileType,
     UploadTooLarge,
     read_capped_upload,
     require_document_type,
+    sanitize_filename,
 )
 
 router = APIRouter(prefix="/workspaces", tags=["records"])
@@ -133,7 +135,7 @@ async def _read_document(file: UploadFile) -> tuple[bytes, str, str]:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
-    return data, content_type, file.filename or "upload"
+    return data, content_type, sanitize_filename(file.filename)
 
 
 def _require_subject(session: Session, subject_id: int) -> None:
@@ -271,7 +273,15 @@ async def create_consent(
     staff: Staff = Depends(_STAFF),
     session: Session = Depends(get_tenant_session),
 ) -> ConsentRecord:
-    _require_subject(session, subject_id)
+    subject = subj_service.get_subject(session, subject_id)
+    if subject is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="subject not found")
+    # Geo exclusion (CLAUDE.md #9): no biometric consent for a geo-blocked subject.
+    if type == ConsentType.biometric and subject.biometrics_blocked:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="biometric consent is blocked for this subject's residence",
+        )
     data, content_type, file_name = await _read_document(file)
     return consent_service.create_consent_record(
         session,
@@ -456,6 +466,32 @@ def revoke_authorization(
         reason=payload.reason,
     )
     return AuthorizationOut.of(revoked)
+
+
+@router.get(
+    "/{workspace_id}/authorizations/{authorization_id}/file",
+    response_model=DownloadResponse,
+)
+def download_authorization(
+    authorization_id: int,
+    workspace: Workspace = Depends(require_workspace_access),
+    staff: Staff = Depends(_STAFF),
+    session: Session = Depends(get_tenant_session),
+) -> DownloadResponse:
+    record = auth_service.get_authorization(session, authorization_id)
+    if record is None or record.file_key is None or record.file_name is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no document")
+    return _download(
+        signed_download_url(
+            session,
+            workspace_id=workspace.id,
+            actor_staff_id=staff.id,
+            entity_type="agent_authorization",
+            entity_id=record.id,
+            file_key=record.file_key,
+            file_name=record.file_name,
+        )
+    )
 
 
 # ── Claim support ─────────────────────────────────────────────────────────────

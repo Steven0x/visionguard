@@ -10,29 +10,35 @@ from api.app.storage import get_storage
 from api.app.storage.keys import object_key
 
 
-def store_document(
+def store_document(schema: str, kind: str, data: bytes, content_type: str) -> str:
+    """Put a document in object storage under an unguessable tenant key; return the key.
+
+    The caller audits ``document.uploaded`` after the owning record is flushed, so the audit
+    row carries the record's ``entity_id``.
+    """
+    key = object_key(schema, kind, content_type)
+    get_storage().put_object(key, data, content_type)
+    return key
+
+
+def audit_upload(
     session: Session,
     *,
     workspace_id: int,
     actor_staff_id: int | None,
-    schema: str,
-    kind: str,
     entity_type: str,
-    data: bytes,
+    entity_id: int,
     content_type: str,
-) -> str:
-    """Put a document in object storage under an unguessable tenant key; audit the upload."""
-    key = object_key(schema, kind, content_type)
-    get_storage().put_object(key, data, content_type)
+) -> None:
     record_audit(
         session,
         workspace_id=workspace_id,
         actor_staff_id=actor_staff_id,
         action="document.uploaded",
         entity_type=entity_type,
+        entity_id=str(entity_id),
         meta={"content_type": content_type},
     )
-    return key
 
 
 def signed_download_url(

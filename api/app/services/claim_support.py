@@ -91,6 +91,15 @@ def _has_active_biometric_consent(session: Session, subject_id: int) -> bool:
 
 
 def claim_support(session: Session, subject: Subject) -> list[ClaimSupport]:
+    """Which claim types the subject has the LEGAL-BASIS RECORDS to support.
+
+    IMPORTANT: ``supported`` means "the required records exist", NOT "safe to file". The
+    claims matrix additionally requires identity verification for ``likeness`` / ``ncii`` /
+    ``impersonation`` (Phase 2 liveness/ID — deferred here), and ``self_owned_declaration``
+    is an unverified attestation. A later filing slice must still apply identity verification,
+    fair-use, and allowlist checks; it must key off ``supported`` but never treat it as
+    file-ready. See docs/legal/claims-matrix.md (status: unapproved).
+    """
     has_auth = active_authorization(session, subject.id) is not None
     rights = _counting_rights(session, subject.id)
     copyright_ok = _supports_copyright(rights)

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from api.app.audit.service import record_audit
 from api.app.models.rights import RightsRecord, RightsStatus, RightsType
-from api.app.services.documents import signed_download_url, store_document
+from api.app.services.documents import audit_upload, signed_download_url, store_document
 
 
 def list_rights(session: Session, subject_id: int) -> list[RightsRecord]:
@@ -43,16 +43,7 @@ def create_rights_record(
     coverage: str | None = None,
     notes: str | None = None,
 ) -> RightsRecord:
-    key = store_document(
-        session,
-        workspace_id=workspace_id,
-        actor_staff_id=actor_staff_id,
-        schema=schema,
-        kind="rights",
-        entity_type="rights_record",
-        data=data,
-        content_type=content_type,
-    )
+    key = store_document(schema, "rights", data, content_type)
     record = RightsRecord(
         subject_id=subject_id,
         type=type,
@@ -77,6 +68,14 @@ def create_rights_record(
         entity_id=str(record.id),
         meta={"type": str(type)},
     )
+    audit_upload(
+        session,
+        workspace_id=workspace_id,
+        actor_staff_id=actor_staff_id,
+        entity_type="rights_record",
+        entity_id=record.id,
+        content_type=content_type,
+    )
     return record
 
 
@@ -88,6 +87,8 @@ def revoke_rights(
     record: RightsRecord,
     reason: str | None,
 ) -> RightsRecord:
+    if record.status == RightsStatus.revoked:
+        return record  # idempotent: keep the first revoke authoritative
     record.status = RightsStatus.revoked
     record.revoked_reason = reason
     record.revoked_at = datetime.now(UTC)

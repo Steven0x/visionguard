@@ -72,6 +72,24 @@ def test_reviewer_cannot_revoke_consent(client: TestClient, auth_header: Header,
     assert denied.status_code == 403
 
 
+def test_biometric_consent_blocked_for_geo_subject(
+    client: TestClient, auth_header: Header, db: Fixtures
+):
+    # A subject residing in IL is biometrics_blocked; biometric consent must be refused.
+    sid = client.post(
+        f"/workspaces/{db.workspace_a.id}/subjects",
+        headers=auth_header(db.admin_user_id),
+        json={"legal_name": "IL Person", "residence_state": "IL"},
+    ).json()["id"]
+    res = client.post(
+        f"/workspaces/{db.workspace_a.id}/subjects/{sid}/consent",
+        headers=auth_header(db.admin_user_id),
+        data={"type": "biometric", "signer_name": "S", "signed_date": "2026-01-01"},
+        files={"file": ("c.pdf", _PDF, "application/octet-stream")},
+    )
+    assert res.status_code == 422
+
+
 def test_authorization_ops_are_admin_only(client: TestClient, auth_header: Header, db: Fixtures):
     denied = client.post(
         f"/workspaces/{db.workspace_a.id}/authorizations",

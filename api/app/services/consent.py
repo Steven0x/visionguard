@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from api.app.audit.service import record_audit
 from api.app.models.rights import ConsentRecord, ConsentType, RecordStatus
 from api.app.services.biometrics import purge_biometric_data
-from api.app.services.documents import signed_download_url, store_document
+from api.app.services.documents import audit_upload, signed_download_url, store_document
 
 
 def list_consent(session: Session, subject_id: int) -> list[ConsentRecord]:
@@ -41,16 +41,7 @@ def create_consent_record(
     signer_name: str,
     signed_date: date,
 ) -> ConsentRecord:
-    key = store_document(
-        session,
-        workspace_id=workspace_id,
-        actor_staff_id=actor_staff_id,
-        schema=schema,
-        kind="consent",
-        entity_type="consent_record",
-        data=data,
-        content_type=content_type,
-    )
+    key = store_document(schema, "consent", data, content_type)
     record = ConsentRecord(
         subject_id=subject_id,
         type=type,
@@ -72,6 +63,14 @@ def create_consent_record(
         entity_id=str(record.id),
         meta={"type": str(type)},
     )
+    audit_upload(
+        session,
+        workspace_id=workspace_id,
+        actor_staff_id=actor_staff_id,
+        entity_type="consent_record",
+        entity_id=record.id,
+        content_type=content_type,
+    )
     return record
 
 
@@ -83,6 +82,8 @@ def revoke_consent(
     record: ConsentRecord,
     reason: str | None,
 ) -> ConsentRecord:
+    if record.status == RecordStatus.revoked:
+        return record  # idempotent: don't re-fire the purge or duplicate the audit
     record.status = RecordStatus.revoked
     record.revoked_reason = reason
     record.revoked_at = datetime.now(UTC)
@@ -96,8 +97,11 @@ def revoke_consent(
         entity_type="consent_record",
         entity_id=str(record.id),
     )
-    # Revoking biometric consent must hard-delete any biometric data for the subject.
-    if record.type == ConsentType.biometric:
+    # Revoking biometric consent must hard-delete the subject's biometric data — but only
+    # once NO active biometric consent remains for that subject.
+    if record.type == ConsentType.biometric and not _has_active_biometric_consent(
+        session, record.subject_id
+    ):
         purged = purge_biometric_data(session, record.subject_id)
         record_audit(
             session,
@@ -109,6 +113,21 @@ def revoke_consent(
             meta={"deleted": purged},
         )
     return record
+
+
+def _has_active_biometric_consent(session: Session, subject_id: int) -> bool:
+    return (
+        session.scalar(
+            select(ConsentRecord.id)
+            .where(
+                ConsentRecord.subject_id == subject_id,
+                ConsentRecord.type == ConsentType.biometric,
+                ConsentRecord.status == RecordStatus.active,
+            )
+            .limit(1)
+        )
+        is not None
+    )
 
 
 def consent_download_url(

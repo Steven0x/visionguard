@@ -169,3 +169,18 @@ def test_subject_level_authorization_enables_enforcement(
 ) -> None:
     _, enforceable = _support(new_workspace.schema_name, subject_auth=True)
     assert enforceable is True
+
+
+def test_subject_level_auth_does_not_leak_to_other_subject(
+    db, new_workspace: Workspace
+) -> None:
+    with tenant_session(new_workspace.schema_name) as s:
+        x = Subject(legal_name="X")
+        y = Subject(legal_name="Y")
+        s.add_all([x, y])
+        s.flush()
+        s.add(AgentAuthorization(subject_id=x.id, signer_name="a", authorized_date=_TODAY))
+        s.flush()
+        assert subject_enforcement(s, x)["enforceable"] is True
+        assert subject_enforcement(s, y)["enforceable"] is False
+        assert not any(c.supported for c in claim_support(s, y))

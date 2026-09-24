@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from api.app.audit.service import record_audit
 from api.app.models.rights import AgentAuthorization, RecordStatus
-from api.app.services.documents import store_document
+from api.app.services.documents import audit_upload, store_document
 
 
 def list_authorizations(
@@ -30,7 +30,11 @@ def get_authorization(session: Session, authorization_id: int) -> AgentAuthoriza
 def active_authorization(
     session: Session, subject_id: int
 ) -> AgentAuthorization | None:
-    """An active authorization that covers this subject: workspace-level OR subject-level."""
+    """An active authorization that covers this subject: workspace-level OR subject-level.
+
+    Deterministic: prefer a subject-level authorization over a workspace-level one, then the
+    newest, so ``subject_enforcement`` reports a stable, meaningful authorization id.
+    """
     return session.scalar(
         select(AgentAuthorization)
         .where(
@@ -39,6 +43,10 @@ def active_authorization(
                 AgentAuthorization.subject_id.is_(None),
                 AgentAuthorization.subject_id == subject_id,
             ),
+        )
+        .order_by(
+            AgentAuthorization.subject_id.is_(None),  # False (subject-level) first
+            AgentAuthorization.id.desc(),
         )
         .limit(1)
     )
@@ -60,16 +68,7 @@ def create_authorization(
 ) -> AgentAuthorization:
     file_key: str | None = None
     if data is not None and content_type is not None:
-        file_key = store_document(
-            session,
-            workspace_id=workspace_id,
-            actor_staff_id=actor_staff_id,
-            schema=schema,
-            kind="authorization",
-            entity_type="agent_authorization",
-            data=data,
-            content_type=content_type,
-        )
+        file_key = store_document(schema, "authorization", data, content_type)
     record = AgentAuthorization(
         subject_id=subject_id,
         file_key=file_key,
@@ -91,6 +90,15 @@ def create_authorization(
         entity_id=str(record.id),
         meta={"scope": "workspace" if subject_id is None else "subject"},
     )
+    if file_key is not None and content_type is not None:
+        audit_upload(
+            session,
+            workspace_id=workspace_id,
+            actor_staff_id=actor_staff_id,
+            entity_type="agent_authorization",
+            entity_id=record.id,
+            content_type=content_type,
+        )
     return record
 
 
@@ -102,6 +110,8 @@ def revoke_authorization(
     record: AgentAuthorization,
     reason: str | None,
 ) -> AgentAuthorization:
+    if record.status == RecordStatus.revoked:
+        return record  # idempotent
     record.status = RecordStatus.revoked
     record.revoked_reason = reason
     record.revoked_at = datetime.now(UTC)

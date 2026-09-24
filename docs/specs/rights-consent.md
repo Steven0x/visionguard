@@ -77,6 +77,14 @@ enforceability gate — no active authorization ⇒ nothing is supported.
 `subject_enforcement(subject)` returns `{enforceable, active_authorization}` — the gate future
 filing slices must call before treating a subject as enforceable.
 
+> **`supported` means "legal-basis records present", NOT "safe to file".** Deliberate Slice-2
+> limitations a filing slice must still handle: the matrix requires **identity verification**
+> for `likeness` / `ncii` / `impersonation` (Phase 2 liveness/ID — not gated here); a
+> `self_owned_declaration` is an **unverified attestation** of ownership; and a single
+> **workspace-level** authorization makes every subject in the workspace enforceable (blanket
+> representation). Filing must still apply identity verification, fair-use (*Lenz*), and
+> allowlist checks, and must key off `supported`, never parse the `missing` strings.
+
 ## Biometrics (independent of claim support)
 
 `biometrics_blocked == false` (a residence/geo check, CLAUDE.md #9) **never implies biometric

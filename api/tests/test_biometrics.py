@@ -103,6 +103,50 @@ def test_revoking_biometric_consent_fires_purge_hook(
     assert "biometrics.purged" in actions
 
 
+def test_purge_waits_until_no_active_biometric_consent_remains(
+    db, new_workspace: Workspace
+) -> None:
+    schema = new_workspace.schema_name
+    with tenant_session(schema) as s:
+        subject = Subject(legal_name="s")
+        s.add(subject)
+        s.flush()
+        ids = []
+        for _ in range(2):
+            record = ConsentRecord(
+                subject_id=subject.id,
+                type=ConsentType.biometric,
+                file_key="k",
+                file_name="c.pdf",
+                content_type="application/pdf",
+                signer_name="x",
+                signed_date=_TODAY,
+                status=RecordStatus.active,
+            )
+            s.add(record)
+            s.flush()
+            ids.append(record.id)
+
+    def _revoke(consent_id: int) -> None:
+        with tenant_session(schema) as s:
+            record = consent_service.get_consent(s, consent_id)
+            assert record is not None
+            consent_service.revoke_consent(
+                s, workspace_id=new_workspace.id, actor_staff_id=db.admin_staff_id,
+                record=record, reason=None,
+            )
+
+    _revoke(ids[0])  # one biometric consent still active → no purge yet
+    with tenant_session(schema) as s:
+        actions = list(s.scalars(select(AuditLog.action)).all())
+    assert actions.count("biometrics.purged") == 0
+
+    _revoke(ids[1])  # last one revoked → purge fires exactly once
+    with tenant_session(schema) as s:
+        actions = list(s.scalars(select(AuditLog.action)).all())
+    assert actions.count("biometrics.purged") == 1
+
+
 def test_revoking_enforcement_consent_does_not_purge(
     db, new_workspace: Workspace, monkeypatch: pytest.MonkeyPatch
 ) -> None:

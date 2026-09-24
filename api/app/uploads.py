@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
+import os
+import re
+
 from fastapi import UploadFile
 
 _CHUNK = 64 * 1024
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def sanitize_filename(name: str | None) -> str:
+    """Reduce a client filename to a safe basename: no paths, no control chars, capped."""
+    base = os.path.basename(name or "").strip()
+    base = _CONTROL_CHARS.sub("", base)
+    base = base.replace("\\", "").replace('"', "")
+    return base[:200] or "upload"
 
 # Magic-byte signatures for the only document types we accept.
 _SIGNATURES: list[tuple[bytes, str]] = [
