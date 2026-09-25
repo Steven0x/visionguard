@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import io
-
 from api.app.db.base import schema_for_workspace
 from api.app.db.session import tenant_session
 from api.app.fingerprint import embedder as embedder_mod
 from api.app.fingerprint.hashing import phash_hex, sha256_hex
+
+# Imports the Pillow decompression-bomb guard (MAX_IMAGE_PIXELS + warning-as-error) into the
+# worker process too, and re-validates the stored bytes rather than a bare Image.open.
+from api.app.images import validate_and_load
 from api.app.models.assets import Asset, AssetStatus
 from api.app.storage import get_storage
-from PIL import Image
 from sqlalchemy import select, update
 
 from worker.celery_app import celery
@@ -46,14 +47,15 @@ def fingerprint_asset(workspace_id: int, asset_id: int) -> str:
 
         data = get_storage().get_object(file_key)
         digest = sha256_hex(data)
-        image = Image.open(io.BytesIO(data))
+        image = validate_and_load(data)  # bomb-safe decode in the worker process
         phash = phash_hex(image)
         embedding = embedder_mod.get_embedder().embed(data)
 
         with tenant_session(schema) as session:
             asset = session.get(Asset, asset_id)
-            if asset is None:
-                return "missing"
+            # Don't clobber an asset that was deleted or retried out from under this run.
+            if asset is None or asset.status != AssetStatus.processing:
+                return "stale"
             asset.sha256 = digest
             asset.phash = phash
             asset.embedding = embedding

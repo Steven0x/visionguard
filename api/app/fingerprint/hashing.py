@@ -33,7 +33,8 @@ def phash_hex(image: Image.Image) -> str:
     basis = _dct_matrix(_DCT_SIZE)
     dct = basis @ pixels @ basis.T
     low = dct[:_HASH_SIZE, :_HASH_SIZE]
-    median = float(np.median(low))
+    # Exclude the dominant DC coefficient from the median (standard pHash) for better bits.
+    median = float(np.median(low.flatten()[1:]))
     bits = (low > median).flatten()
     value = 0
     for bit in bits:

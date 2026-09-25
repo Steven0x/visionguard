@@ -53,9 +53,14 @@ Both are tenant tables with an isolation test each.
   (`Image.open(...).load()`) before anything is written to storage. A truncated, corrupt, or
   over-dimension image → **422**, and nothing is stored.
 - Bodies read in capped chunks; over `ASSET_MAX_UPLOAD_BYTES` (~25 MB) → 422.
-- The **original** is stored privately under a tenant-scoped, unguessable key
-  (`{ws_schema}/assets/{uuid}.{ext}`). A small **EXIF-stripped JPEG thumbnail** (≤256 px,
-  re-encoded so no GPS/camera metadata survives) is stored under `{ws_schema}/thumbnails/…`.
+- The **original** is stored privately, **byte-exact** (for evidence fidelity and hash-based
+  duplicate detection), under a tenant-scoped, unguessable key (`{ws_schema}/assets/{uuid}.{ext}`).
+  Because the bytes are preserved verbatim, an image-polyglot (valid image prefix + trailing
+  payload) survives storage; this is mitigated by never rendering originals inline — they are
+  served only as `Content-Disposition: attachment` signed URLs. (Re-encoding to strip trailing
+  bytes would break byte-exactness and is deliberately not done.)
+- A small **EXIF-stripped JPEG thumbnail** (≤256 px, re-encoded so no GPS/camera metadata
+  survives) is stored under `{ws_schema}/thumbnails/…`.
 - Downloads are only ever **short-lived signed URLs**:
   - `GET …/assets/{id}/thumbnail` — signed URL, **not audited** (thumbnails aren't evidence;
     gallery polling would flood the audit log).

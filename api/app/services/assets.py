@@ -86,12 +86,10 @@ def create_asset(
 def delete_asset(
     session: Session, *, workspace_id: int, actor_staff_id: int | None, asset: Asset
 ) -> None:
+    """Delete an asset. NOTE: this finalizes (commits) the request transaction."""
     if not can_delete_asset(session, asset):
         raise AssetDeletionBlocked("asset is referenced and cannot be deleted")
-    storage = get_storage()
-    storage.delete_object(asset.file_key)
-    storage.delete_object(asset.thumbnail_key)
-    asset_id = asset.id
+    file_key, thumbnail_key, asset_id = asset.file_key, asset.thumbnail_key, asset.id
     session.delete(asset)
     session.flush()
     record_audit(
@@ -102,6 +100,12 @@ def delete_asset(
         entity_type="asset",
         entity_id=str(asset_id),
     )
+    # Commit the DB decision first; storage deletes follow, so a storage failure only leaves
+    # harmless orphaned blobs rather than a row pointing at missing objects.
+    session.commit()
+    storage = get_storage()
+    storage.delete_object(file_key)
+    storage.delete_object(thumbnail_key)
 
 
 def retry_asset(
@@ -121,8 +125,13 @@ def retry_asset(
 
 
 def _enqueue_fingerprint(session: Session, workspace_id: int, asset_id: int) -> None:
-    # Commit first so the (separately-transacted) worker can see the row it must claim. In
-    # eager test mode .delay() runs inline, so the row must already be committed.
+    """Commit the pending asset, then enqueue fingerprinting.
+
+    IMPORTANT: this COMMITS the request transaction — the worker runs in a separate
+    transaction and must see the committed row to claim it (and in eager test mode .delay()
+    runs inline). So `create_asset`/`retry_asset` finalize the transaction; callers must not
+    perform further mutations after them.
+    """
     session.commit()
     from worker.tasks import fingerprint_asset
 

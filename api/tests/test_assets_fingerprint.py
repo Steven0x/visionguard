@@ -94,6 +94,29 @@ def test_retry_refused_past_attempt_cap(
     assert res.status_code == 409
 
 
+def test_retry_increments_attempts_until_cap(
+    client: TestClient, auth_header, db: Fixtures, new_workspace, monkeypatch: pytest.MonkeyPatch
+):
+    class _Boom:
+        def embed(self, data: bytes) -> list[float]:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(embedder_mod, "get_embedder", lambda: _Boom())
+    sid = _subject(client, auth_header, db, new_workspace)
+    body = _upload(client, auth_header, db, new_workspace, sid, png_bytes()).json()
+    assert body["attempts"] == 1
+    retry = f"/workspaces/{new_workspace.id}/subjects/{sid}/assets/{body['id']}/retry"
+
+    for expected in (2, 3, 4, 5):
+        res = client.post(retry, headers=auth_header(db.admin_user_id))
+        assert res.status_code == 200
+        assert res.json()["attempts"] == expected
+        assert res.json()["status"] == "failed"
+
+    # attempts == 5 → capped; no further retry.
+    assert client.post(retry, headers=auth_header(db.admin_user_id)).status_code == 409
+
+
 def test_atomic_claim_is_a_noop_for_non_pending(db: Fixtures, new_workspace):
     # An already-ready asset can't be re-claimed by a second worker.
     with tenant_session(new_workspace.schema_name) as s:
