@@ -30,17 +30,9 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      # bitnami/minio starts the server automatically (GH service containers can't pass a
-      # command) and pre-creates the bucket via MINIO_DEFAULT_BUCKETS. Readiness is polled by
-      # the "Wait for MinIO" step below (no dependency on in-image CLIs for a health probe).
-      minio:
-        image: bitnami/minio:latest
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-          MINIO_DEFAULT_BUCKETS: vg-assets
-        ports:
-          - 9000:9000
+      # MinIO is started as a background step below (not a service container) because GH
+      # service containers can't pass the required `server /data` command, and the
+      # Docker Hub minio/bitnami images aren't reliably pullable.
     env:
       APP_ENV: test
       AUTH_TEST_MODE: "1"
@@ -60,6 +52,11 @@ jobs:
           python-version: "3.12"
       - name: Install backend
         run: pip install -e ".[dev]"
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+            quay.io/minio/minio:latest server /data
       - name: Wait for MinIO + ensure bucket
         run: |
           python - <<'PY'
