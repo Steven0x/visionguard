@@ -31,7 +31,9 @@ def _list_tenant_schemas(connection: Connection) -> list[str]:
     if not insp.has_table("workspaces", schema="public"):
         return []
     existing = set(insp.get_schema_names())
-    ids = connection.execute(text("SELECT id FROM public.workspaces ORDER BY id")).scalars()
+    ids: list[int] = list(
+        connection.execute(text("SELECT id FROM public.workspaces ORDER BY id")).scalars().all()
+    )
     return [s for wid in ids if (s := schema_for_workspace(wid)) in existing]
 
 

@@ -51,12 +51,14 @@ class Fixtures:
 def _reset_database() -> None:
     engine = get_engine()
     with engine.begin() as conn:
-        tenant_schemas = conn.execute(
-            text(
-                "SELECT schema_name FROM information_schema.schemata "
-                "WHERE schema_name LIKE 'ws\\_%' ESCAPE '\\'"
-            )
-        ).scalars().all()
+        tenant_schemas: list[str] = list(
+            conn.execute(
+                text(
+                    "SELECT schema_name FROM information_schema.schemata "
+                    "WHERE schema_name LIKE 'ws\\_%' ESCAPE '\\'"
+                )
+            ).scalars().all()
+        )
         for schema in tenant_schemas:
             conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
         conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
