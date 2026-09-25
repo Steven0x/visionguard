@@ -1,7 +1,7 @@
 """Discovery Celery jobs: reverse-image + keyword scans, scheduling, thumbnail cleanup.
 
-Scan tasks NEVER raise (eager-safe): failures are recorded on the run. The run row is created
-and committed first, so a later failure can still be marked `failed`.
+Scan tasks NEVER raise (eager-safe): failures are recorded on the run. Budget is reserved
+under a row lock BEFORE any provider call, so concurrent scans can't exceed the monthly cap.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from api.app.models.assets import Asset, AssetStatus
 from api.app.models.discovery import (
     DiscoveryCandidate,
     DiscoveryRun,
+    DiscoverySettings,
     RunKind,
     RunStatus,
     ScanFrequency,
@@ -24,6 +25,7 @@ from api.app.providers import get_keyword_provider, get_reverse_image_providers
 from api.app.providers.base import ProviderResult
 from api.app.services import discovery as svc
 from api.app.services.claim_support import subject_enforcement
+from api.app.services.keywords import identifiers as get_identifiers
 from api.app.storage import get_storage
 from sqlalchemy import select
 
@@ -56,81 +58,71 @@ def _finish(
 @celery.task(name="worker.reverse_image_scan")
 def reverse_image_scan(workspace_id: int, subject_id: int, asset_id: int) -> str:
     schema = schema_for_workspace(workspace_id)
-    # 1) Create the run + make the gate/budget decision in a committed transaction.
+    # 1) Gate/budget decision + budget RESERVATION under a settings row lock (committed).
     with tenant_session(schema) as session:
         subject = session.get(Subject, subject_id)
         asset = session.get(Asset, asset_id)
         if subject is None or asset is None or asset.status != AssetStatus.ready:
             return "skipped"
-        settings = svc.get_or_create_settings(session)
-        tineye_enabled = settings.tineye_enabled
+        svc.get_or_create_settings(session)
+        settings = session.get(DiscoverySettings, 1, with_for_update=True)
+        assert settings is not None  # noqa: S101 - just created above
         budget = settings.monthly_call_budget
+        tineye_enabled = settings.tineye_enabled
         run = svc.start_run(
-            session,
-            kind=RunKind.reverse_image,
-            subject_id=subject_id,
-            asset_id=asset_id,
+            session, kind=RunKind.reverse_image, subject_id=subject_id, asset_id=asset_id
         )
         run_id = run.id
-        enforceable = subject_enforcement(session, subject)["enforceable"]
+        if not subject_enforcement(session, subject)["enforceable"]:
+            svc.finish_run(session, workspace_id=workspace_id, actor_staff_id=None, run=run,
+                           status=RunStatus.blocked)
+            return "blocked"
+        if not svc.csam_scanning_ready():
+            svc.finish_run(session, workspace_id=workspace_id, actor_staff_id=None, run=run,
+                           status=RunStatus.blocked)
+            return "blocked"
         mtd = svc.month_to_date_calls(session)
+        if mtd >= budget:
+            svc.finish_run(session, workspace_id=workspace_id, actor_staff_id=None, run=run,
+                           status=RunStatus.blocked)
+            return "blocked"
+        providers = get_reverse_image_providers(tineye_enabled=tineye_enabled)
+        reserve = min(len(providers), budget - mtd)
+        capped = reserve < len(providers)
+        run.calls_made = reserve  # reserve budget before releasing the lock
+        session.flush()
         image_url = get_storage().generate_download_url(
             asset.file_key, filename=asset.file_name, expires_in=_SIGNED_TTL
         )
-        if not enforceable:
-            svc.finish_run(
-                session, workspace_id=workspace_id, actor_staff_id=None, run=run,
-                status=RunStatus.blocked,
-            )
-            return "blocked"
-        if mtd >= budget:
-            svc.finish_run(
-                session, workspace_id=workspace_id, actor_staff_id=None, run=run,
-                status=RunStatus.blocked,
-            )
-            return "blocked"
 
-    calls = cost = candidates = 0
+    cost = candidates = 0
     try:
-        providers = get_reverse_image_providers(tineye_enabled=tineye_enabled)
-        allowed = max(0, budget - mtd)
-        to_call = providers[:allowed]
-        capped = len(to_call) < len(providers)
         collected: list[tuple[str, ProviderResult]] = []
-        for provider in to_call:
+        for provider in providers[:reserve]:
             response = provider.search(image_url)
-            calls += response.calls_made
             cost += response.cost_cents
             for result in response.results:
                 collected.append((provider.name, result))
         with tenant_session(schema) as session:
             for provider_name, result in collected:
-                candidate = svc.add_image_candidate(
-                    session,
-                    schema=schema,
-                    subject_id=subject_id,
-                    run_id=run_id,
-                    provider=provider_name,
-                    query=None,
-                    source_url=result.source_url,
-                    page_url=result.page_url,
-                )
-                if candidate is not None:
+                if svc.add_image_candidate(
+                    session, schema=schema, subject_id=subject_id, run_id=run_id,
+                    provider=provider_name, query=None,
+                    source_url=result.source_url, page_url=result.page_url,
+                ) is not None:
                     candidates += 1
             final_run = session.get(DiscoveryRun, run_id)
             if final_run is not None:
                 svc.finish_run(
                     session, workspace_id=workspace_id, actor_staff_id=None, run=final_run,
                     status=RunStatus.partial if capped else RunStatus.completed,
-                    calls_made=calls, cost_cents=cost, candidates_found=candidates,
+                    calls_made=reserve, cost_cents=cost, candidates_found=candidates,
                 )
         return "completed"
     except Exception as exc:  # never raises — eager-safe
-        _finish(
-            schema, workspace_id, run_id, status=RunStatus.failed,
-            calls_made=calls, cost_cents=cost, candidates_found=candidates,
-            error=str(exc)[:1000],
-        )
+        _finish(schema, workspace_id, run_id, status=RunStatus.failed,
+                calls_made=reserve, cost_cents=cost, candidates_found=candidates,
+                error=str(exc)[:1000])
         return "failed"
 
 
@@ -141,80 +133,67 @@ def keyword_scan(workspace_id: int, subject_id: int) -> str:
         subject = session.get(Subject, subject_id)
         if subject is None:
             return "skipped"
-        settings = svc.get_or_create_settings(session)
+        svc.get_or_create_settings(session)
+        settings = session.get(DiscoverySettings, 1, with_for_update=True)
+        assert settings is not None  # noqa: S101
         budget = settings.monthly_call_budget
         run = svc.start_run(
             session, kind=RunKind.keyword, subject_id=subject_id, provider="keyword"
         )
         run_id = run.id
-        enforceable = subject_enforcement(session, subject)["enforceable"]
+        if not subject_enforcement(session, subject)["enforceable"]:
+            svc.finish_run(session, workspace_id=workspace_id, actor_staff_id=None, run=run,
+                           status=RunStatus.blocked)
+            return "blocked"
         mtd = svc.month_to_date_calls(session)
-        from api.app.services.keywords import identifiers as get_identifiers
-
-        queries = get_identifiers(session, subject)
-        if not enforceable:
-            svc.finish_run(
-                session, workspace_id=workspace_id, actor_staff_id=None, run=run,
-                status=RunStatus.blocked,
-            )
-            return "blocked"
         if mtd >= budget:
-            svc.finish_run(
-                session, workspace_id=workspace_id, actor_staff_id=None, run=run,
-                status=RunStatus.blocked,
-            )
+            svc.finish_run(session, workspace_id=workspace_id, actor_staff_id=None, run=run,
+                           status=RunStatus.blocked)
             return "blocked"
+        queries = get_identifiers(session, subject)
+        reserve = min(len(queries), budget - mtd)
+        capped = reserve < len(queries)
+        run.calls_made = reserve
+        session.flush()
 
-    calls = cost = candidates = 0
+    cost = candidates = 0
     try:
         provider = get_keyword_provider()
-        allowed = max(0, budget - mtd)
-        to_run = queries[:allowed]
-        capped = len(to_run) < len(queries)
-        collected_links: list[tuple[str, ProviderResult]] = []
-        for query in to_run:
+        collected: list[tuple[str, ProviderResult]] = []
+        for query in queries[:reserve]:
             response = provider.search(query)
-            calls += response.calls_made
             cost += response.cost_cents
             for result in response.results:
-                collected_links.append((query, result))
+                collected.append((query, result))
         with tenant_session(schema) as session:
-            for query, result in collected_links:
-                candidate = svc.add_link_candidate(
-                    session,
-                    subject_id=subject_id,
-                    run_id=run_id,
-                    provider=provider.name,
-                    query=query,
-                    source_url=result.source_url,
-                    page_url=result.page_url,
-                )
-                if candidate is not None:
+            for query, result in collected:
+                if svc.add_link_candidate(
+                    session, subject_id=subject_id, run_id=run_id, provider=provider.name,
+                    query=query, source_url=result.source_url, page_url=result.page_url,
+                ) is not None:
                     candidates += 1
             final_run = session.get(DiscoveryRun, run_id)
             if final_run is not None:
                 svc.finish_run(
                     session, workspace_id=workspace_id, actor_staff_id=None, run=final_run,
                     status=RunStatus.partial if capped else RunStatus.completed,
-                    calls_made=calls, cost_cents=cost, candidates_found=candidates,
+                    calls_made=reserve, cost_cents=cost, candidates_found=candidates,
                 )
         return "completed"
     except Exception as exc:
-        _finish(
-            schema, workspace_id, run_id, status=RunStatus.failed,
-            calls_made=calls, cost_cents=cost, candidates_found=candidates,
-            error=str(exc)[:1000],
-        )
+        _finish(schema, workspace_id, run_id, status=RunStatus.failed,
+                calls_made=reserve, cost_cents=cost, candidates_found=candidates,
+                error=str(exc)[:1000])
         return "failed"
 
 
-def _due(frequency: ScanFrequency, last_started: datetime | None) -> bool:
+def _due(frequency: ScanFrequency, last_scan: datetime | None) -> bool:
     if frequency == ScanFrequency.off:
         return False
-    if last_started is None:
+    if last_scan is None:
         return True
     window = timedelta(days=1) if frequency == ScanFrequency.daily else timedelta(days=7)
-    return datetime.now(UTC) - last_started >= window
+    return datetime.now(UTC) - last_scan >= window
 
 
 @celery.task(name="worker.dispatch_scheduled_scans")
@@ -228,12 +207,17 @@ def dispatch_scheduled_scans() -> int:
         schema = schema_for_workspace(workspace_id)
         with tenant_session(schema) as session:
             settings = svc.get_or_create_settings(session)
-            last = session.scalar(
+            # "Due" is judged from the last actual SCAN (not intake or blocked runs).
+            last_scan = session.scalar(
                 select(DiscoveryRun.started_at)
+                .where(
+                    DiscoveryRun.kind.in_([RunKind.reverse_image, RunKind.keyword]),
+                    DiscoveryRun.status != RunStatus.blocked,
+                )
                 .order_by(DiscoveryRun.started_at.desc())
                 .limit(1)
             )
-            if not _due(settings.scan_frequency, last):
+            if not _due(settings.scan_frequency, last_scan):
                 continue
             subjects = list(
                 session.scalars(
@@ -245,14 +229,11 @@ def dispatch_scheduled_scans() -> int:
                 if not subject_enforcement(session, subject)["enforceable"]:
                     continue
                 plan.append(("keyword", subject.id, None))
-                asset_ids = list(
-                    session.scalars(
-                        select(Asset.id).where(
-                            Asset.subject_id == subject.id, Asset.status == AssetStatus.ready
-                        )
-                    ).all()
-                )
-                for aid in asset_ids:
+                for aid in session.scalars(
+                    select(Asset.id).where(
+                        Asset.subject_id == subject.id, Asset.status == AssetStatus.ready
+                    )
+                ).all():
                     plan.append(("reverse", subject.id, aid))
         for kind, subject_id, asset_id in plan:
             if kind == "keyword":
@@ -265,7 +246,11 @@ def dispatch_scheduled_scans() -> int:
 
 @celery.task(name="worker.cleanup_expired_thumbnails")
 def cleanup_expired_thumbnails() -> int:
-    """Beat: delete candidate thumbnails + rows past the workspace retention window."""
+    """Beat: delete candidate thumbnails + rows past the workspace retention window.
+
+    Deletes the (sensitive) object bytes FIRST so a crash can't orphan them; a leftover row
+    with a missing thumbnail self-heals on the next run.
+    """
     with public_session() as session:
         workspace_ids = list(session.scalars(select(Workspace.id)).all())
 
@@ -276,20 +261,22 @@ def cleanup_expired_thumbnails() -> int:
         with tenant_session(schema) as session:
             settings = svc.get_or_create_settings(session)
             cutoff = datetime.now(UTC) - timedelta(days=settings.thumbnail_retention_days)
-            expired = list(
-                session.scalars(
+            pairs = [
+                (c.id, c.thumbnail_key)
+                for c in session.scalars(
                     select(DiscoveryCandidate).where(
                         DiscoveryCandidate.thumbnail_key.is_not(None),
                         DiscoveryCandidate.discovered_at < cutoff,
                     )
                 ).all()
-            )
-            keys = [c.thumbnail_key for c in expired if c.thumbnail_key]
-            for candidate in expired:
-                session.delete(candidate)
-            session.flush()
-            session.commit()
-        for key in keys:
+                if c.thumbnail_key
+            ]
+        for _, key in pairs:
             storage.delete_object(key)
-            removed += 1
+        with tenant_session(schema) as session:
+            for candidate_id, _ in pairs:
+                candidate = session.get(DiscoveryCandidate, candidate_id)
+                if candidate is not None:
+                    session.delete(candidate)
+        removed += len(pairs)
     return removed

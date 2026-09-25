@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from typing import Protocol
 
 
+class ProviderError(Exception):
+    """A provider request failed. Message is sanitized (no URL/API key)."""
+
+
 @dataclass
 class ProviderResult:
     source_url: str  # the found image/content URL

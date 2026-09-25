@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     tineye_api_key: str = ""
     serpapi_cost_cents_per_call: int = 1
     tineye_cost_cents_per_call: int = 20
+    # Found-image thumbnails from the open web must pass a CSAM scan before storage (CLAUDE.md
+    # #7). Until a scanner is wired, storing images fetched by the REAL fetcher is refused.
+    csam_scanner_enabled: bool = False
 
     @property
     def allowed_origin_list(self) -> list[str]:

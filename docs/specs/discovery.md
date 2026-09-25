@@ -71,8 +71,11 @@ Found-content thumbnails are ingested from the open web and may include illegal 
 **Before production**, every fetched image MUST pass **PhotoDNA-style CSAM hash-scanning**
 before it is stored or displayed; a positive match must be routed to the **NCMEC report path**
 and never stored or shown (CLAUDE.md #7). Slice 4 **defers the scanner** (tracked in
-`docs/BACKLOG.md`) but is built to accommodate it: images pass through a single choke point
-(`add_image_candidate`) where the scan will run, and nothing beyond a thumbnail is retained.
+`docs/BACKLOG.md`) but **fails closed in code, not just docs**: `add_image_candidate` (the
+single choke point where found imagery enters storage) refuses to store when the real `safe`
+fetcher is used and `CSAM_SCANNER_ENABLED` is false — so a reverse-image scan in production
+records a `blocked` run and stores nothing until the scanner is wired. The fake fetcher
+(tests/CI) is exempt. Nothing beyond a thumbnail is ever retained.
 
 ## Jobs, budget, cost
 

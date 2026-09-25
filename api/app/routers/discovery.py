@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -107,10 +107,10 @@ class SettingsOut(BaseModel):
 
 
 class SettingsIn(BaseModel):
-    monthly_call_budget: int | None = None
+    monthly_call_budget: int | None = Field(default=None, ge=0, le=100_000)
     scan_frequency: ScanFrequency | None = None
     tineye_enabled: bool | None = None
-    thumbnail_retention_days: int | None = None
+    thumbnail_retention_days: int | None = Field(default=None, ge=1, le=365)
 
 
 def _subject_or_404(session: Session, subject_id: int) -> Subject:

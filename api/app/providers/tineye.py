@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from api.app.providers.base import ProviderResponse, ProviderResult
+from api.app.providers.base import ProviderError, ProviderResponse, ProviderResult
 
 _TINEYE_URL = "https://api.tineye.com/rest/search/"
 
@@ -17,12 +17,16 @@ class TinEyeProvider:
         self._cost_cents = cost_cents
 
     def search(self, image_url: str) -> ProviderResponse:
-        response = httpx.get(
-            _TINEYE_URL,
-            params={"image_url": image_url, "api_key": self._api_key},
-            timeout=20.0,
-        )
-        response.raise_for_status()
+        try:
+            response = httpx.get(
+                _TINEYE_URL,
+                params={"image_url": image_url, "api_key": self._api_key},
+                timeout=20.0,
+            )
+        except httpx.RequestError as exc:
+            raise ProviderError(f"tineye request error: {type(exc).__name__}") from None
+        if response.status_code >= 400:
+            raise ProviderError(f"tineye returned HTTP {response.status_code}") from None
         data = response.json()
         results = [
             ProviderResult(

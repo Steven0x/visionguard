@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from api.app.audit.service import record_audit
@@ -30,12 +31,23 @@ from api.app.storage import get_storage
 from api.app.storage.keys import object_key
 
 _TRACKING_KEYS = {
-    "gclid", "fbclid", "mc_eid", "mc_cid", "igshid", "yclid", "ref", "ref_src", "_ga",
+    "gclid", "fbclid", "mc_eid", "mc_cid", "igshid", "yclid", "ref_src", "_ga",
 }
 
 
 class DiscoveryNotAuthorized(Exception):
     """Raised when discovery is attempted for a subject without active authorization."""
+
+
+class CsamScannerRequired(Exception):
+    """Raised when found-image storage is attempted without a configured CSAM scanner."""
+
+
+def csam_scanning_ready() -> bool:
+    """Fail closed: storing images fetched from the open web (real 'safe' fetcher) is only
+    allowed once a CSAM scanner is configured. The fake fetcher (tests/CI) is exempt."""
+    settings = get_settings()
+    return settings.fetcher_backend == "fake" or settings.csam_scanner_enabled
 
 
 # ── URL canonicalization ──────────────────────────────────────────────────────
@@ -68,6 +80,11 @@ def _source_key(canonical_url: str) -> str:
     return hashlib.sha256(canonical_url.encode()).hexdigest()
 
 
+def _safe_page_url(page_url: str | None) -> str | None:
+    """Only keep http(s) page URLs (drops javascript:/data: from provider results)."""
+    return canonicalize_url(page_url) if page_url else None
+
+
 # ── Gate / settings / budget ──────────────────────────────────────────────────
 
 
@@ -79,13 +96,21 @@ def assert_enforceable(session: Session, subject: Subject) -> None:
 
 
 def get_or_create_settings(session: Session) -> DiscoverySettings:
-    settings = session.scalar(select(DiscoverySettings).limit(1))
+    # Fixed id=1 makes the PK the single-row guarantee; a concurrent double-insert loses to
+    # the PK and re-reads the winner (via a savepoint so the outer transaction survives).
+    settings = session.get(DiscoverySettings, 1)
     if settings is None:
         settings = DiscoverySettings(
-            monthly_call_budget=get_settings().discovery_default_monthly_budget
+            id=1, monthly_call_budget=get_settings().discovery_default_monthly_budget
         )
         session.add(settings)
-        session.flush()
+        try:
+            with session.begin_nested():
+                session.flush()
+        except IntegrityError:
+            settings = session.get(DiscoverySettings, 1)
+    if settings is None:  # pragma: no cover - always present after insert/reselect
+        raise RuntimeError("discovery settings row missing")
     return settings
 
 
@@ -258,6 +283,14 @@ def add_image_candidate(
     if _candidate_exists(session, subject_id, key):
         return None
 
+    # CSAM scan choke point (CLAUDE.md #7). This is the single place found imagery enters
+    # storage. Until a PhotoDNA-style scanner is wired here (hit → NCMEC path, never stored),
+    # storing images fetched from the open web is refused — enforced in code, not just docs.
+    if not csam_scanning_ready():
+        raise CsamScannerRequired(
+            "storing found images requires a configured CSAM scanner"
+        )
+
     fetcher = fetcher or get_fetcher()
     try:
         result = fetcher.fetch(canonical)
@@ -270,8 +303,6 @@ def add_image_candidate(
     except InvalidImage:
         return None
 
-    # CSAM scan choke point (deferred — see docs/specs/discovery.md). A PhotoDNA-style scan
-    # MUST run here before storing/serving in production; a hit routes to NCMEC and is dropped.
     thumbnail = make_thumbnail(image, get_settings().thumbnail_max_px)
     thumbnail_key = object_key(schema, "candidate_thumbnail", "image/jpeg")
     get_storage().put_object(thumbnail_key, thumbnail, "image/jpeg")
@@ -284,7 +315,7 @@ def add_image_candidate(
         kind=CandidateKind.image,
         source_url=canonical,
         source_key=key,
-        page_url=page_url,
+        page_url=_safe_page_url(page_url),
         sha256=sha256_hex(result.content),
         phash=phash_hex(image),
         embedding=get_embedder().embed(result.content),
@@ -320,7 +351,7 @@ def add_link_candidate(
         kind=CandidateKind.link,
         source_url=canonical,
         source_key=key,
-        page_url=page_url,
+        page_url=_safe_page_url(page_url),
     )
     session.add(candidate)
     session.flush()

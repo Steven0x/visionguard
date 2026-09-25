@@ -7,23 +7,29 @@ from typing import Any
 
 import httpx
 
-from api.app.providers.base import ProviderResponse, ProviderResult
+from api.app.providers.base import ProviderError, ProviderResponse, ProviderResult
 
 _SERPAPI_URL = "https://serpapi.com/search"
 _RETRY_STATUS = {429, 500, 502, 503, 504}
 
 
 def _get_json(params: dict[str, str], *, retries: int = 3, timeout: float = 20.0) -> dict[str, Any]:
+    # Never let the exception text carry the request URL (it contains api_key + the signed
+    # asset URL) into logs or run.error — raise a sanitized ProviderError instead.
     delay = 0.5
     for attempt in range(retries + 1):
-        response = httpx.get(_SERPAPI_URL, params=params, timeout=timeout)
+        try:
+            response = httpx.get(_SERPAPI_URL, params=params, timeout=timeout)
+        except httpx.RequestError as exc:
+            raise ProviderError(f"serpapi request error: {type(exc).__name__}") from None
         if response.status_code in _RETRY_STATUS and attempt < retries:
             time.sleep(delay)
             delay *= 2
             continue
-        response.raise_for_status()
+        if response.status_code >= 400:
+            raise ProviderError(f"serpapi returned HTTP {response.status_code}") from None
         return response.json()
-    raise RuntimeError("unreachable")  # pragma: no cover
+    raise ProviderError("serpapi request failed")  # pragma: no cover
 
 
 class SerpApiLensProvider:
