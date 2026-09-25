@@ -34,7 +34,8 @@ class Settings(BaseSettings):
     # Redis (worker)
     redis_url: str = "redis://localhost:6379/0"
 
-    # Object storage (S3-compatible: MinIO in dev/tests, Cloudflare R2 in prod)
+    # Object storage. "s3" = MinIO (dev) / R2 (prod); "fake" = in-memory (tests/CI).
+    storage_backend: str = "s3"
     storage_endpoint_url: str = "http://localhost:9000"
     storage_access_key_id: str = "minioadmin"
     storage_secret_access_key: str = "minioadmin"  # noqa: S105 - local dev default

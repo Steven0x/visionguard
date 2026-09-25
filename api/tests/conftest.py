@@ -14,6 +14,8 @@ os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("AUTH_TEST_MODE", "1")
 # Use the deterministic fake embedder so tests never import torch or download weights.
 os.environ.setdefault("EMBEDDER_BACKEND", "fake")
+# Use in-memory object storage so tests/CI need no MinIO/R2 container.
+os.environ.setdefault("STORAGE_BACKEND", "fake")
 os.environ.setdefault(
     "DATABASE_URL",
     "postgresql+psycopg://visionguard:visionguard@localhost:5433/visionguard",

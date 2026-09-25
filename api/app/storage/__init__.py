@@ -11,7 +11,12 @@ from api.app.storage.s3 import S3Storage
 
 @lru_cache
 def get_storage() -> Storage:
-    return S3Storage(get_settings())
+    settings = get_settings()
+    if settings.storage_backend == "fake":
+        from api.app.storage.fake import FakeStorage
+
+        return FakeStorage()
+    return S3Storage(settings)
 
 
 __all__ = ["Storage", "get_storage"]

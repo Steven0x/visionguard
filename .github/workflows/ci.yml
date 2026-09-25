@@ -30,20 +30,14 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      # MinIO is started as a background step below (not a service container) because GH
-      # service containers can't pass the required `server /data` command, and the
-      # Docker Hub minio/bitnami images aren't reliably pullable.
     env:
       APP_ENV: test
       AUTH_TEST_MODE: "1"
       DATABASE_URL: postgresql+psycopg://visionguard:visionguard@localhost:5432/visionguard
       REDIS_URL: redis://localhost:6379/0
       ALLOWED_ORIGINS: http://localhost:5173
-      STORAGE_ENDPOINT_URL: http://localhost:9000
-      STORAGE_ACCESS_KEY_ID: minioadmin
-      STORAGE_SECRET_ACCESS_KEY: minioadmin
-      STORAGE_BUCKET: vg-assets
-      # Use the fake embedder so CI installs only .[dev] (no torch / model weights).
+      # In-memory storage + fake embedder → CI needs no MinIO container and no torch.
+      STORAGE_BACKEND: fake
       EMBEDDER_BACKEND: fake
     steps:
       - uses: actions/checkout@v4
@@ -52,39 +46,6 @@ jobs:
           python-version: "3.12"
       - name: Install backend
         run: pip install -e ".[dev]"
-      - name: Start MinIO
-        run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-            quay.io/minio/minio:latest server /data
-      - name: Wait for MinIO + ensure bucket
-        run: |
-          python - <<'PY'
-          import time
-          import boto3
-          from botocore.config import Config
-          client = boto3.client(
-              "s3",
-              endpoint_url="http://localhost:9000",
-              aws_access_key_id="minioadmin",
-              aws_secret_access_key="minioadmin",
-              region_name="us-east-1",
-              config=Config(signature_version="s3v4"),
-          )
-          for _ in range(30):
-              try:
-                  client.list_buckets()
-                  try:
-                      client.create_bucket(Bucket="vg-assets")
-                  except Exception:
-                      pass
-                  print("minio ready")
-                  break
-              except Exception:
-                  time.sleep(2)
-          else:
-              raise SystemExit("minio did not become ready")
-          PY
       - name: Lint (ruff)
         run: ruff check api worker
       - name: Typecheck (mypy)
