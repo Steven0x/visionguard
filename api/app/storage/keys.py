@@ -12,7 +12,7 @@ _EXT_BY_TYPE = {
     "image/png": "png",
     "image/webp": "webp",
 }
-_KINDS = {"rights", "consent", "authorization", "asset", "thumbnail"}
+_KINDS = {"rights", "consent", "authorization", "asset", "thumbnail", "candidate_thumbnail"}
 
 
 def object_key(schema: str, kind: str, content_type: str) -> str:

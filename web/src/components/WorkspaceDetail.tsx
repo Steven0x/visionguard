@@ -11,6 +11,7 @@ import {
   type WorkspaceDetail as Detail,
 } from "../api";
 import { useToken } from "../useToken";
+import { DiscoverySettingsEditor } from "./DiscoverySettingsEditor";
 import { SubjectDetail } from "./SubjectDetail";
 import { SubjectImport } from "./SubjectImport";
 
@@ -94,6 +95,7 @@ export function WorkspaceDetail({
 
       {isAdmin && <WorkspaceEditor detail={detail} onSaved={reload} />}
       {isAdmin && <AllowlistEditor detail={detail} onChanged={reload} />}
+      {isAdmin && <DiscoverySettingsEditor workspaceId={workspaceId} />}
 
       <section className="space-y-2">
         <div className="flex items-center justify-between">

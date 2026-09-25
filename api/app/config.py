@@ -53,6 +53,20 @@ class Settings(BaseSettings):
     thumbnail_max_px: int = 256
     asset_max_fingerprint_attempts: int = 5
 
+    # Discovery (Slice 4)
+    fetcher_backend: str = "safe"  # "safe" (prod) | "fake" (tests/CI)
+    provider_backend: str = "serpapi"  # "serpapi" (prod) | "fake" (tests/CI)
+    fetcher_timeout_seconds: float = 10.0
+    fetcher_max_bytes: int = 10_000_000
+    fetcher_max_redirects: int = 3
+    fetcher_user_agent: str = "VisionGuard/1.0 (+https://visionguard.example)"
+    discovery_default_monthly_budget: int = 500
+    discovery_intake_max_urls: int = 200
+    serpapi_key: str = ""
+    tineye_api_key: str = ""
+    serpapi_cost_cents_per_call: int = 1
+    tineye_cost_cents_per_call: int = 20
+
     @property
     def allowed_origin_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]

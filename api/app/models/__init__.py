@@ -2,6 +2,15 @@
 
 from api.app.models.assets import Asset, AssetStatus, SubjectKeyword
 from api.app.models.audit import AuditLog
+from api.app.models.discovery import (
+    CandidateKind,
+    DiscoveryCandidate,
+    DiscoveryRun,
+    DiscoverySettings,
+    RunKind,
+    RunStatus,
+    ScanFrequency,
+)
 from api.app.models.public import Staff, StaffRole, StaffWorkspaceAccess, Workspace
 from api.app.models.rights import (
     AgentAuthorization,
@@ -26,6 +35,13 @@ __all__ = [
     "Asset",
     "AssetStatus",
     "AuditLog",
+    "CandidateKind",
+    "DiscoveryCandidate",
+    "DiscoveryRun",
+    "DiscoverySettings",
+    "RunKind",
+    "RunStatus",
+    "ScanFrequency",
     "SubjectKeyword",
     "ConsentRecord",
     "ConsentType",

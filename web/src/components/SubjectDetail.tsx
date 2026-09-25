@@ -21,6 +21,7 @@ import {
 import { useToken } from "../useToken";
 import { AssetsSection } from "./AssetsSection";
 import { ClaimSupportPanel } from "./ClaimSupportPanel";
+import { DiscoverySection } from "./DiscoverySection";
 import { KeywordsSection } from "./KeywordsSection";
 
 const RIGHTS_TYPES = [
@@ -105,6 +106,7 @@ export function SubjectDetail({
 
       <AssetsSection workspaceId={workspaceId} subjectId={subjectId} />
       <KeywordsSection workspaceId={workspaceId} subjectId={subjectId} />
+      <DiscoverySection workspaceId={workspaceId} subjectId={subjectId} />
 
       {/* Rights */}
       <section className="space-y-2">

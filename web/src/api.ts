@@ -343,3 +343,68 @@ export const addKeyword = (token: string, wsId: number, sid: number, keyword: st
 
 export const removeKeyword = (token: string, wsId: number, sid: number, kid: number) =>
   request<void>(token, `${base(wsId, sid)}/keywords/${kid}`, { method: "DELETE" });
+
+// ── Slice 4: discovery ───────────────────────────────────────────────────────
+
+export interface DiscoveryCandidate {
+  id: number;
+  run_id: number | null;
+  provider: string;
+  query: string | null;
+  kind: "image" | "link";
+  source_url: string;
+  page_url: string | null;
+  sha256: string | null;
+  has_thumbnail: boolean;
+  discovered_at: string;
+}
+
+export interface DiscoveryRun {
+  id: number;
+  kind: string;
+  provider: string | null;
+  status: "running" | "completed" | "partial" | "blocked" | "failed";
+  calls_made: number;
+  estimated_cost_cents: number;
+  candidates_found: number;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface DiscoverySettings {
+  monthly_call_budget: number;
+  scan_frequency: "off" | "daily" | "weekly";
+  tineye_enabled: boolean;
+  thumbnail_retention_days: number;
+}
+
+export const intakeUrls = (token: string, wsId: number, sid: number, urls: string[]) =>
+  request<DiscoveryRun>(token, `${base(wsId, sid)}/discovery/intake`, {
+    method: "POST",
+    body: JSON.stringify({ urls }),
+  });
+
+export const scanNow = (token: string, wsId: number, sid: number) =>
+  request<{ enqueued: number }>(token, `${base(wsId, sid)}/discovery/scan`, { method: "POST" });
+
+export const listDiscoveryCandidates = (token: string, wsId: number, sid: number) =>
+  request<DiscoveryCandidate[]>(token, `${base(wsId, sid)}/discovery/candidates`);
+
+export const candidateThumbnailUrl = (token: string, wsId: number, sid: number, cid: number) =>
+  request<{ url: string }>(token, `${base(wsId, sid)}/discovery/candidates/${cid}/thumbnail`);
+
+export const listDiscoveryRuns = (token: string, wsId: number, sid: number) =>
+  request<DiscoveryRun[]>(token, `${base(wsId, sid)}/discovery/runs`);
+
+export const getDiscoverySettings = (token: string, wsId: number) =>
+  request<DiscoverySettings>(token, `/workspaces/${wsId}/discovery/settings`);
+
+export const updateDiscoverySettings = (
+  token: string,
+  wsId: number,
+  body: Partial<DiscoverySettings>,
+) =>
+  request<DiscoverySettings>(token, `/workspaces/${wsId}/discovery/settings`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });

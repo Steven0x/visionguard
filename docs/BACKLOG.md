@@ -62,6 +62,9 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 **Done when:** a scheduled run for one workspace produces candidates with source, thumbnail and URL; provider costs are logged per workspace.
 **Agents:** reviewer, red-team (SSRF, fetcher)
 
+> **Pre-production requirement (CSAM):** discovery ingests thumbnails of found content from the open web, which may include illegal imagery. Before production, every fetched image MUST pass PhotoDNA-style CSAM hash-scanning at the `add_image_candidate` choke point BEFORE it is stored or displayed; a positive match must be routed to the NCMEC report path and never stored/shown (CLAUDE.md #7). Slice 4 defers the scanner itself but is structured so it can be dropped in at one place. This must be closed before any real crawling.
+> **Deferred:** Drive/folder URL pulls; matching/scoring of candidates (Slice 5). Slice 4 is provider-APIs + manual intake only. See `docs/specs/discovery.md`.
+
 ## Slice 5: Matching and the review inbox
 
 - Score candidates: pHash distance → embedding similarity → rules (source type, risky keywords, allowlist)

@@ -36,9 +36,12 @@ jobs:
       DATABASE_URL: postgresql+psycopg://visionguard:visionguard@localhost:5432/visionguard
       REDIS_URL: redis://localhost:6379/0
       ALLOWED_ORIGINS: http://localhost:5173
-      # In-memory storage + fake embedder → CI needs no MinIO container and no torch.
+      # In-memory storage + fake embedder/fetcher/providers → CI needs no MinIO, no torch,
+      # and makes no network calls.
       STORAGE_BACKEND: fake
       EMBEDDER_BACKEND: fake
+      FETCHER_BACKEND: fake
+      PROVIDER_BACKEND: fake
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

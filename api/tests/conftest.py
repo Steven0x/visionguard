@@ -16,6 +16,9 @@ os.environ.setdefault("AUTH_TEST_MODE", "1")
 os.environ.setdefault("EMBEDDER_BACKEND", "fake")
 # Use in-memory object storage so tests/CI need no MinIO/R2 container.
 os.environ.setdefault("STORAGE_BACKEND", "fake")
+# Use fake discovery fetcher + providers so tests never hit the network.
+os.environ.setdefault("FETCHER_BACKEND", "fake")
+os.environ.setdefault("PROVIDER_BACKEND", "fake")
 os.environ.setdefault(
     "DATABASE_URL",
     "postgresql+psycopg://visionguard:visionguard@localhost:5433/visionguard",
@@ -50,7 +53,7 @@ class Fixtures:
 
 def _reset_database() -> None:
     engine = get_engine()
-    with engine.begin() as conn:
+    with engine.connect() as conn:
         tenant_schemas: list[str] = list(
             conn.execute(
                 text(
@@ -59,8 +62,12 @@ def _reset_database() -> None:
                 )
             ).scalars().all()
         )
-        for schema in tenant_schemas:
+    # Drop each tenant schema in its OWN transaction — dropping many HNSW-indexed schemas in
+    # a single transaction exhausts Postgres shared memory (locks).
+    for schema in tenant_schemas:
+        with engine.begin() as conn:
             conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+    with engine.begin() as conn:
         conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
         conn.execute(text("CREATE SCHEMA public"))
 
