@@ -46,6 +46,7 @@ function Console() {
         <WorkspaceDetail
           workspaceId={openWorkspace}
           isAdmin={isAdmin}
+          keepBlurDefault={me.review_keep_blur}
           onBack={() => setOpenWorkspace(null)}
         />
       )}

@@ -27,6 +27,7 @@ from api.app.models.subjects import Subject
 from api.app.net.fetcher import Fetcher, get_fetcher
 from api.app.net.ssrf import SsrfError
 from api.app.services.claim_support import subject_enforcement
+from api.app.services.scoring import apply_scoring
 from api.app.storage import get_storage
 from api.app.storage.keys import object_key
 
@@ -221,17 +222,18 @@ def intake_urls(
         seen.add(key)
         if _candidate_exists(session, subject.id, key):
             continue
-        session.add(
-            DiscoveryCandidate(
-                subject_id=subject.id,
-                run_id=run.id,
-                provider="manual",
-                kind=CandidateKind.link,
-                source_url=canonical,
-                source_key=key,
-                page_url=canonical,
-            )
+        candidate = DiscoveryCandidate(
+            subject_id=subject.id,
+            run_id=run.id,
+            provider="manual",
+            kind=CandidateKind.link,
+            source_url=canonical,
+            source_key=key,
+            page_url=canonical,
         )
+        session.add(candidate)
+        session.flush()
+        apply_scoring(session, candidate)  # score + allowlist routing before the inbox
         inserted += 1
     finish_run(
         session,
@@ -269,6 +271,7 @@ def add_image_candidate(
     query: str | None,
     source_url: str,
     page_url: str | None,
+    title: str | None = None,
     fetcher: Fetcher | None = None,
 ) -> DiscoveryCandidate | None:
     """Fetch a found image through the safe fetcher and store fingerprints + a thumbnail.
@@ -316,6 +319,7 @@ def add_image_candidate(
         source_url=canonical,
         source_key=key,
         page_url=_safe_page_url(page_url),
+        title=title,
         sha256=sha256_hex(result.content),
         phash=phash_hex(image),
         embedding=get_embedder().embed(result.content),
@@ -324,6 +328,7 @@ def add_image_candidate(
     )
     session.add(candidate)
     session.flush()
+    apply_scoring(session, candidate)  # score + allowlist routing before the inbox
     return candidate
 
 
@@ -336,6 +341,7 @@ def add_link_candidate(
     query: str | None,
     source_url: str,
     page_url: str | None,
+    title: str | None = None,
 ) -> DiscoveryCandidate | None:
     canonical = canonicalize_url(source_url)
     if canonical is None:
@@ -352,9 +358,11 @@ def add_link_candidate(
         source_url=canonical,
         source_key=key,
         page_url=_safe_page_url(page_url),
+        title=title,
     )
     session.add(candidate)
     session.flush()
+    apply_scoring(session, candidate)  # score + allowlist routing before the inbox
     return candidate
 
 

@@ -75,6 +75,12 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 **Done when:** a reviewer clears 100 candidates in under 15 minutes; every decision is stored as a labeled example.
 **Agents:** reviewer
 
+> **Deferred:** the case state machine / timeline / offender-grouping (Slice 6), evidence
+> capture (Slice 7) and notice generation (Slice 8). Slice 5 ships a **case stub** (status
+> `Confirmed`) and only **stores** labeled decisions — the XGBoost classifier that consumes
+> them is later. "Match" is represented by a scored discovery candidate (no separate table).
+> See `docs/specs/review.md`.
+
 ## Slice 6: Cases and the lifecycle
 
 - Case service with an enforced state machine (see `CLAUDE.md`); every transition audited

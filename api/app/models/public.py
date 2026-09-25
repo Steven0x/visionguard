@@ -53,6 +53,10 @@ class Staff(PublicBase):
     role: Mapped[StaffRole] = mapped_column(String(20), nullable=False)
     # Admins may be granted access to every workspace without explicit grant rows.
     all_workspaces: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Per-reviewer safety: keep found-content thumbnails blurred by default (CLAUDE.md #7).
+    review_keep_blur: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

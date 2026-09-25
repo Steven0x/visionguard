@@ -18,10 +18,11 @@ class AssetDeletionBlocked(Exception):
 
 
 def can_delete_asset(session: Session, asset: Asset) -> bool:
-    """Slice 3: assets aren't referenced yet, so deletion is always allowed. Later slices
-    return False when a Match/Case references the asset, so evidence can't be deleted."""
-    _ = (session, asset)
-    return True
+    """False when a confirmed case references this asset (Slice 5) — evidence can't be deleted
+    out from under an open case."""
+    from api.app.services.review import asset_referenced_by_confirmed_case
+
+    return not asset_referenced_by_confirmed_case(session, asset.id)
 
 
 def list_assets(session: Session, subject_id: int) -> list[Asset]:

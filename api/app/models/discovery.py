@@ -17,6 +17,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from api.app.db.base import TenantBase
@@ -47,6 +48,13 @@ class RunStatus(enum.StrEnum):
 class CandidateKind(enum.StrEnum):
     image = "image"
     link = "link"
+
+
+class ReviewStatus(enum.StrEnum):
+    pending = "pending"
+    confirmed = "confirmed"
+    dismissed = "dismissed"
+    auto_dismissed = "auto_dismissed"
 
 
 class DiscoverySettings(TenantBase):
@@ -127,6 +135,19 @@ class DiscoveryCandidate(TenantBase):
     )
     thumbnail_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Provider-supplied title (used by rule scoring); may be absent.
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ── Review/matching state (Slice 5) ──
+    review_status: Mapped[ReviewStatus] = mapped_column(
+        String(20), nullable=False, default=ReviewStatus.pending
+    )
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    best_match_asset_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assets.id", ondelete="SET NULL"), nullable=True
+    )
+    matched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dismiss_reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
     discovered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

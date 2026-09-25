@@ -26,6 +26,7 @@ from api.app.providers.base import ProviderResult
 from api.app.services import discovery as svc
 from api.app.services.claim_support import subject_enforcement
 from api.app.services.keywords import identifiers as get_identifiers
+from api.app.services.review import candidate_referenced_by_confirmed_case
 from api.app.storage import get_storage
 from sqlalchemy import select
 
@@ -109,6 +110,7 @@ def reverse_image_scan(workspace_id: int, subject_id: int, asset_id: int) -> str
                     session, schema=schema, subject_id=subject_id, run_id=run_id,
                     provider=provider_name, query=None,
                     source_url=result.source_url, page_url=result.page_url,
+                    title=result.title,
                 ) is not None:
                     candidates += 1
             final_run = session.get(DiscoveryRun, run_id)
@@ -170,6 +172,7 @@ def keyword_scan(workspace_id: int, subject_id: int) -> str:
                 if svc.add_link_candidate(
                     session, subject_id=subject_id, run_id=run_id, provider=provider.name,
                     query=query, source_url=result.source_url, page_url=result.page_url,
+                    title=result.title,
                 ) is not None:
                     candidates += 1
             final_run = session.get(DiscoveryRun, run_id)
@@ -248,8 +251,10 @@ def dispatch_scheduled_scans() -> int:
 def cleanup_expired_thumbnails() -> int:
     """Beat: delete candidate thumbnails + rows past the workspace retention window.
 
-    Deletes the (sensitive) object bytes FIRST so a crash can't orphan them; a leftover row
-    with a missing thumbnail self-heals on the next run.
+    The retention guard (never purge a candidate referenced by a confirmed case — it is
+    evidence) is re-checked INSIDE the delete transaction, not just when selecting: a candidate
+    confirmed between the scan and the delete must survive. The R2 object is removed only AFTER
+    its row is deleted, so a candidate confirmed in that window keeps both its row and thumbnail.
     """
     with public_session() as session:
         workspace_ids = list(session.scalars(select(Workspace.id)).all())
@@ -261,22 +266,27 @@ def cleanup_expired_thumbnails() -> int:
         with tenant_session(schema) as session:
             settings = svc.get_or_create_settings(session)
             cutoff = datetime.now(UTC) - timedelta(days=settings.thumbnail_retention_days)
-            pairs = [
-                (c.id, c.thumbnail_key)
-                for c in session.scalars(
-                    select(DiscoveryCandidate).where(
+            candidate_ids = list(
+                session.scalars(
+                    select(DiscoveryCandidate.id).where(
                         DiscoveryCandidate.thumbnail_key.is_not(None),
                         DiscoveryCandidate.discovered_at < cutoff,
                     )
                 ).all()
-                if c.thumbnail_key
-            ]
-        for _, key in pairs:
-            storage.delete_object(key)
+            )
+        deleted_keys: list[str] = []
         with tenant_session(schema) as session:
-            for candidate_id, _ in pairs:
+            for candidate_id in candidate_ids:
                 candidate = session.get(DiscoveryCandidate, candidate_id)
-                if candidate is not None:
-                    session.delete(candidate)
-        removed += len(pairs)
+                if candidate is None or candidate.thumbnail_key is None:
+                    continue
+                # Re-check the guard at delete time (a confirm may have landed since the scan).
+                if candidate_referenced_by_confirmed_case(session, candidate_id):
+                    continue
+                deleted_keys.append(candidate.thumbnail_key)
+                session.delete(candidate)
+        # Rows are committed (context exit); now drop the object bytes for rows actually removed.
+        for key in deleted_keys:
+            storage.delete_object(key)
+        removed += len(deleted_keys)
     return removed

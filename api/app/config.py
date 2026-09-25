@@ -70,9 +70,33 @@ class Settings(BaseSettings):
     # #7). Until a scanner is wired, storing images fetched by the REAL fetcher is refused.
     csam_scanner_enabled: bool = False
 
+    # Review & matching (Slice 5). Thresholds, weights and the leak/tube domain + risky-keyword
+    # lists are config (env), never hard-coded, so ops can tune them without a deploy.
+    review_phash_exact_max: int = 6  # Hamming distance ≤ this = near-exact copy
+    review_phash_near_max: int = 16  # ≤ this still counts as a pHash match
+    review_embedding_match_threshold: float = 0.80  # cosine similarity ≥ this = visual match
+    review_score_visual_exact: int = 60
+    review_score_visual_near: int = 40
+    review_score_embedding_max: int = 40
+    review_score_leak_domain: int = 25
+    review_score_risky_keyword: int = 8  # per keyword
+    review_score_risky_keyword_cap: int = 24
+    # Seed placeholders — ops maintains the real list via env. Comma-separated hostnames.
+    review_leak_domains: str = "leak-tube.example,leaks.example"
+    review_risky_keywords: str = "leaked,leak,free,onlyfans,nude,nudes,stolen,xxx"
+    review_bulk_dismiss_max: int = 500
+
     @property
     def allowed_origin_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
+    @property
+    def review_leak_domain_set(self) -> set[str]:
+        return {d.strip().lower() for d in self.review_leak_domains.split(",") if d.strip()}
+
+    @property
+    def review_risky_keyword_list(self) -> list[str]:
+        return [k.strip().lower() for k in self.review_risky_keywords.split(",") if k.strip()]
 
     @property
     def is_production(self) -> bool:

@@ -12,6 +12,7 @@ from api.app.routers import (
     health,
     me,
     records,
+    review,
     subjects,
     workspaces,
 )
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     app.include_router(records.router)
     app.include_router(assets.router)
     app.include_router(discovery.router)
+    app.include_router(review.router)
     return app
 
 

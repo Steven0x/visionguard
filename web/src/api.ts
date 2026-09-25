@@ -5,6 +5,7 @@ export interface Me {
   email: string;
   role: "admin" | "reviewer";
   all_workspaces: boolean;
+  review_keep_blur: boolean;
 }
 
 export interface Workspace {
@@ -407,4 +408,130 @@ export const updateDiscoverySettings = (
   request<DiscoverySettings>(token, `/workspaces/${wsId}/discovery/settings`, {
     method: "PUT",
     body: JSON.stringify(body),
+  });
+
+// ── Slice 5: matching & the review inbox ─────────────────────────────────────
+
+export type DismissReason =
+  | "not_a_match"
+  | "licensed"
+  | "fair_use"
+  | "own_account"
+  | "other";
+
+export const DISMISS_REASONS: DismissReason[] = [
+  "not_a_match",
+  "licensed",
+  "fair_use",
+  "own_account",
+  "other",
+];
+
+export interface ScoreBreakdown {
+  phash: { best_distance: number | null; asset_id: number | null; points: number };
+  embedding: { best_similarity: number | null; asset_id: number | null; points: number };
+  rules: { leak_domain: boolean; risky_keywords: string[]; points: number };
+  visual_points: number;
+  unverified: boolean;
+}
+
+export interface InboxItem {
+  id: number;
+  subject_id: number;
+  subject_name: string;
+  provider: string;
+  kind: "image" | "link";
+  source_url: string;
+  page_url: string | null;
+  score: number | null;
+  score_breakdown: ScoreBreakdown | null;
+  best_match_asset_id: number | null;
+  has_found_thumbnail: boolean;
+  has_asset_thumbnail: boolean;
+  unverified: boolean;
+  suggested_claim: string | null;
+  supported_claims: string[];
+  discovered_at: string;
+}
+
+export interface CaseStub {
+  id: number;
+  subject_id: number;
+  candidate_id: number | null;
+  matched_asset_id: number | null;
+  claim_type: string;
+  status: string;
+  created_at: string;
+}
+
+export interface InboxFilters {
+  subject_id?: number;
+  min_score?: number;
+  provider?: string;
+  domain?: string;
+  kind?: "image" | "link";
+}
+
+const wsBase = (wsId: number) => `/workspaces/${wsId}`;
+
+export const listInbox = (token: string, wsId: number, filters: InboxFilters = {}) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) {
+    if (v !== undefined && v !== "" && v !== null) q.set(k, String(v));
+  }
+  const qs = q.toString();
+  return request<InboxItem[]>(token, `${wsBase(wsId)}/review/inbox${qs ? `?${qs}` : ""}`);
+};
+
+export const confirmCandidate = (
+  token: string,
+  wsId: number,
+  cid: number,
+  claimType: string,
+) =>
+  request<CaseStub>(token, `${wsBase(wsId)}/review/candidates/${cid}/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ claim_type: claimType }),
+  });
+
+export const dismissCandidate = (
+  token: string,
+  wsId: number,
+  cid: number,
+  reason: DismissReason,
+) =>
+  request<void>(token, `${wsBase(wsId)}/review/candidates/${cid}/dismiss`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+
+export const reopenCandidate = (token: string, wsId: number, cid: number, note: string) =>
+  request<void>(token, `${wsBase(wsId)}/review/candidates/${cid}/reopen`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+
+export const bulkDismiss = (
+  token: string,
+  wsId: number,
+  body: { domain?: string; account?: string; reason: DismissReason; dry_run: boolean },
+) =>
+  request<{ count: number; applied: boolean }>(token, `${wsBase(wsId)}/review/bulk-dismiss`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const foundThumbnailUrl = (token: string, wsId: number, cid: number) =>
+  request<{ url: string }>(token, `${wsBase(wsId)}/review/candidates/${cid}/found-thumbnail`);
+
+export const assetMatchThumbnailUrl = (token: string, wsId: number, cid: number) =>
+  request<{ url: string }>(token, `${wsBase(wsId)}/review/candidates/${cid}/asset-thumbnail`);
+
+export const listCases = (token: string, wsId: number) =>
+  request<CaseStub[]>(token, `${wsBase(wsId)}/review/cases`);
+
+export const updateReviewPrefs = (token: string, keepBlur: boolean) =>
+  request<{ review_keep_blur: boolean }>(token, `/me/review-prefs`, {
+    method: "PUT",
+    body: JSON.stringify({ keep_blur: keepBlur }),
   });

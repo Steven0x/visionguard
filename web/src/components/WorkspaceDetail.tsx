@@ -12,6 +12,7 @@ import {
 } from "../api";
 import { useToken } from "../useToken";
 import { DiscoverySettingsEditor } from "./DiscoverySettingsEditor";
+import { ReviewInbox } from "./ReviewInbox";
 import { SubjectDetail } from "./SubjectDetail";
 import { SubjectImport } from "./SubjectImport";
 
@@ -24,10 +25,12 @@ const splitList = (v: string) =>
 export function WorkspaceDetail({
   workspaceId,
   isAdmin,
+  keepBlurDefault,
   onBack,
 }: {
   workspaceId: number;
   isAdmin: boolean;
+  keepBlurDefault: boolean;
   onBack: () => void;
 }) {
   const getToken = useToken();
@@ -96,6 +99,12 @@ export function WorkspaceDetail({
       {isAdmin && <WorkspaceEditor detail={detail} onSaved={reload} />}
       {isAdmin && <AllowlistEditor detail={detail} onChanged={reload} />}
       {isAdmin && <DiscoverySettingsEditor workspaceId={workspaceId} />}
+
+      <ReviewInbox
+        workspaceId={workspaceId}
+        isAdmin={isAdmin}
+        keepBlurDefault={keepBlurDefault}
+      />
 
       <section className="space-y-2">
         <div className="flex items-center justify-between">

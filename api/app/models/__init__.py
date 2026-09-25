@@ -7,11 +7,19 @@ from api.app.models.discovery import (
     DiscoveryCandidate,
     DiscoveryRun,
     DiscoverySettings,
+    ReviewStatus,
     RunKind,
     RunStatus,
     ScanFrequency,
 )
 from api.app.models.public import Staff, StaffRole, StaffWorkspaceAccess, Workspace
+from api.app.models.review import (
+    Case,
+    CaseStatus,
+    DismissReason,
+    ReviewDecision,
+    ReviewDecisionKind,
+)
 from api.app.models.rights import (
     AgentAuthorization,
     ConsentRecord,
@@ -36,9 +44,15 @@ __all__ = [
     "AssetStatus",
     "AuditLog",
     "CandidateKind",
+    "Case",
+    "CaseStatus",
     "DiscoveryCandidate",
     "DiscoveryRun",
     "DiscoverySettings",
+    "DismissReason",
+    "ReviewDecision",
+    "ReviewDecisionKind",
+    "ReviewStatus",
     "RunKind",
     "RunStatus",
     "ScanFrequency",
