@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install dev infra-up infra-down migrate test test-api test-web lint lint-api lint-web fmt seed-admin
+.PHONY: help install dev infra-up infra-down migrate test test-api test-web lint lint-api lint-web fmt seed-admin seed-demo
 
 # Load .env if present so local commands see DATABASE_URL / REDIS_URL etc.
 ifneq (,$(wildcard .env))
@@ -15,8 +15,8 @@ install: ## Install backend (editable, with dev extras) and frontend deps
 	pip install -e ".[dev]"
 	npm --prefix web install
 
-infra-up: ## Start local Postgres + Redis
-	docker compose up -d db redis
+infra-up: ## Start local Postgres + Redis + MinIO (and create the bucket)
+	docker compose up -d db redis minio minio-setup
 
 infra-down: ## Stop local infra
 	docker compose down
@@ -51,3 +51,6 @@ fmt: ## Auto-format backend
 
 seed-admin: ## Create the first admin staff member (EMAIL=, CLERK_USER_ID=)
 	python -m api.app.cli seed-first-admin --email "$(EMAIL)" --clerk-user-id "$(CLERK_USER_ID)"
+
+seed-demo: ## Seed a clickable demo workspace + subject + images + review-inbox candidates
+	python -m api.app.cli seed-demo

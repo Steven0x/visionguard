@@ -29,6 +29,23 @@ def seed_first_admin_cmd(
     typer.echo(f"created admin staff id={staff.id} ({staff.email})")
 
 
+@app.command("seed-demo")
+def seed_demo_cmd() -> None:
+    """Seed a clickable demo: a workspace, an authorized+consenting subject, five
+    fingerprinted images, and discovery candidates (fake providers) for the review inbox.
+    Idempotent. Requires migrations applied and a shared object store (MinIO/R2)."""
+    from api.app.demo import seed_demo
+
+    result = seed_demo()
+    typer.echo(
+        f"demo ready: workspace '{result.workspace_slug}' (id={result.workspace_id}, "
+        f"schema={result.schema})\n"
+        f"  subject id={result.subject_id}, assets={result.assets}\n"
+        f"  review inbox: {result.pending_candidates} pending, "
+        f"{result.auto_dismissed} auto-dismissed (allowlisted)"
+    )
+
+
 @app.command("create-workspace")
 def create_workspace_cmd(
     name: str = typer.Option(..., help="Workspace display name"),
@@ -38,6 +55,23 @@ def create_workspace_cmd(
     """Provision a workspace and its tenant schema."""
     ws = create_workspace(name=name, slug=slug, plan=plan)
     typer.echo(f"created workspace id={ws.id} slug={ws.slug} schema={ws.schema_name}")
+
+
+@app.command("mint-token")
+def mint_token_cmd(
+    clerk_user_id: str = typer.Option(..., help="Staff clerk_user_id (the token 'sub')"),
+    azp: str = typer.Option(
+        "http://localhost:5173", help="Authorized party; must match an ALLOWED_ORIGINS entry"
+    ),
+) -> None:
+    """Print a local bearer token for API calls WITHOUT Clerk. Only works when
+    AUTH_TEST_MODE=1 (dev/test). Use it as: Authorization: Bearer <token>."""
+    from api.app.auth.clerk import make_test_token
+    from api.app.config import get_settings
+
+    if not get_settings().auth_test_mode:
+        raise typer.BadParameter("AUTH_TEST_MODE must be 1 to mint local tokens")
+    typer.echo(make_test_token(clerk_user_id, azp=azp))
 
 
 # StaffRole is re-exported for convenience in future subcommands.
