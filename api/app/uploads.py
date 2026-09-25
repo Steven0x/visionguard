@@ -64,3 +64,23 @@ def require_document_type(data: bytes) -> str:
     if content_type is None:
         raise UnsupportedFileType("only PDF, JPEG, or PNG files are accepted")
     return content_type
+
+
+def sniff_image_type(data: bytes) -> str | None:
+    """Return a JPEG/PNG/WebP content type from magic bytes, else None."""
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    # WebP: "RIFF" .... "WEBP"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def require_image_type(data: bytes) -> str:
+    """Validate an uploaded image by sniffing (JPEG/PNG/WebP only); return content type."""
+    content_type = sniff_image_type(data[:16])
+    if content_type is None:
+        raise UnsupportedFileType("only JPEG, PNG, or WebP images are accepted")
+    return content_type

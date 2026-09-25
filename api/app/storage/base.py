@@ -12,6 +12,10 @@ class Storage(Protocol):
 
     def put_object(self, key: str, data: bytes, content_type: str) -> None: ...
 
+    def get_object(self, key: str) -> bytes:
+        """Read an object's bytes (used by the worker to fingerprint an original)."""
+        ...
+
     def generate_download_url(
         self, key: str, *, filename: str, expires_in: int
     ) -> str:

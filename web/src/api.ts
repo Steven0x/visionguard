@@ -287,3 +287,59 @@ export const revokeAuthorization = (token: string, wsId: number, aid: number, re
     method: "POST",
     body: JSON.stringify({ reason }),
   });
+
+// ── Slice 3: assets & keywords ───────────────────────────────────────────────
+
+export type AssetStatus = "pending" | "processing" | "ready" | "failed";
+
+export interface Asset {
+  id: number;
+  subject_id: number;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  status: AssetStatus;
+  sha256: string | null;
+  phash: string | null;
+  duplicate_of_asset_id: number | null;
+  error: string | null;
+  attempts: number;
+}
+
+export interface Keyword {
+  id: number;
+  keyword: string;
+}
+
+export const listAssets = (token: string, wsId: number, sid: number) =>
+  request<Asset[]>(token, `${base(wsId, sid)}/assets`);
+
+export const uploadAsset = (token: string, wsId: number, sid: number, file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return request<Asset>(token, `${base(wsId, sid)}/assets`, { method: "POST", body: form });
+};
+
+export const deleteAsset = (token: string, wsId: number, sid: number, aid: number) =>
+  request<void>(token, `${base(wsId, sid)}/assets/${aid}`, { method: "DELETE" });
+
+export const retryAsset = (token: string, wsId: number, sid: number, aid: number) =>
+  request<Asset>(token, `${base(wsId, sid)}/assets/${aid}/retry`, { method: "POST" });
+
+export const assetThumbnailUrl = (token: string, wsId: number, sid: number, aid: number) =>
+  request<{ url: string }>(token, `${base(wsId, sid)}/assets/${aid}/thumbnail`);
+
+export const assetOriginalUrl = (token: string, wsId: number, sid: number, aid: number) =>
+  request<{ url: string }>(token, `${base(wsId, sid)}/assets/${aid}/original`);
+
+export const listKeywords = (token: string, wsId: number, sid: number) =>
+  request<Keyword[]>(token, `${base(wsId, sid)}/keywords`);
+
+export const addKeyword = (token: string, wsId: number, sid: number, keyword: string) =>
+  request<Keyword>(token, `${base(wsId, sid)}/keywords`, {
+    method: "POST",
+    body: JSON.stringify({ keyword }),
+  });
+
+export const removeKeyword = (token: string, wsId: number, sid: number, kid: number) =>
+  request<void>(token, `${base(wsId, sid)}/keywords/${kid}`, { method: "DELETE" });

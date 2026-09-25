@@ -50,6 +50,8 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 **Done when:** 500 images upload and are fingerprinted in the background; duplicate uploads are detected by hash.
 **Agents:** reviewer, red-team (uploads)
 
+> **Deferred:** video upload + frame extraction, and Drive/folder pulls, are deferred to a later slice. Slice 3 is **images only** (JPEG/PNG/WebP). See `docs/specs/assets.md`.
+
 ## Slice 4: Discovery v1
 
 - **Manual URL intake:** paste one or many URLs (from staff, talent or fans) → fetch → candidate matches. SSRF-safe fetcher.

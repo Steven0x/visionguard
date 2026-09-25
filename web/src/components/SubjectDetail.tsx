@@ -19,7 +19,9 @@ import {
   rightsFileUrl,
 } from "../api";
 import { useToken } from "../useToken";
+import { AssetsSection } from "./AssetsSection";
 import { ClaimSupportPanel } from "./ClaimSupportPanel";
+import { KeywordsSection } from "./KeywordsSection";
 
 const RIGHTS_TYPES = [
   "management_agreement",
@@ -100,6 +102,9 @@ export function SubjectDetail({
       <h2 className="text-xl font-semibold">{subjectName}</h2>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {claims && <ClaimSupportPanel data={claims} />}
+
+      <AssetsSection workspaceId={workspaceId} subjectId={subjectId} />
+      <KeywordsSection workspaceId={workspaceId} subjectId={subjectId} />
 
       {/* Rights */}
       <section className="space-y-2">

@@ -32,6 +32,10 @@ class S3Storage:
             Bucket=self._bucket, Key=key, Body=data, ContentType=content_type
         )
 
+    def get_object(self, key: str) -> bytes:
+        response = self._client.get_object(Bucket=self._bucket, Key=key)
+        return response["Body"].read()
+
     def generate_download_url(
         self, key: str, *, filename: str, expires_in: int
     ) -> str:

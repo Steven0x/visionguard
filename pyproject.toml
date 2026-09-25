@@ -19,6 +19,9 @@ dependencies = [
     "boto3>=1.35",
     "typer>=0.12",
     "python-multipart>=0.0.9",
+    "pgvector>=0.3",
+    "pillow>=10.4",
+    "numpy>=1.26",
 ]
 
 [project.optional-dependencies]
@@ -28,6 +31,11 @@ dev = [
     "mypy>=1.11",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+]
+# Heavy ML deps for the real embedder — installed on the worker in prod, NOT in CI.
+ml = [
+    "torch>=2.2",
+    "open-clip-torch>=2.24",
 ]
 
 [project.scripts]

@@ -51,6 +51,8 @@ jobs:
       STORAGE_ACCESS_KEY_ID: minioadmin
       STORAGE_SECRET_ACCESS_KEY: minioadmin
       STORAGE_BUCKET: vg-assets
+      # Use the fake embedder so CI installs only .[dev] (no torch / model weights).
+      EMBEDDER_BACKEND: fake
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

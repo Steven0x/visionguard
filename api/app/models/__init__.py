@@ -1,5 +1,6 @@
 """Import all models so their metadata is registered on the bases."""
 
+from api.app.models.assets import Asset, AssetStatus, SubjectKeyword
 from api.app.models.audit import AuditLog
 from api.app.models.public import Staff, StaffRole, StaffWorkspaceAccess, Workspace
 from api.app.models.rights import (
@@ -22,7 +23,10 @@ __all__ = [
     "AgentAuthorization",
     "AllowlistEntry",
     "AllowlistKind",
+    "Asset",
+    "AssetStatus",
     "AuditLog",
+    "SubjectKeyword",
     "ConsentRecord",
     "ConsentType",
     "RecordStatus",

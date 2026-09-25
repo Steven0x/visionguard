@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     storage_signed_url_ttl_seconds: int = 300
     storage_max_upload_bytes: int = 15_000_000
 
+    # Assets & fingerprinting (Slice 3)
+    asset_max_upload_bytes: int = 25_000_000
+    embedder_backend: str = "clip"  # "clip" (prod) | "fake" (tests/CI)
+    clip_model: str = "ViT-B-32"
+    clip_pretrained: str = "laion2b_s34b_b79k"
+    embedding_dim: int = 512
+    thumbnail_max_px: int = 256
+    asset_max_fingerprint_attempts: int = 5
+
     @property
     def allowed_origin_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
