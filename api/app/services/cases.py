@@ -536,4 +536,7 @@ def offender_summary(session: Session) -> list[OffenderGroup]:
         .group_by(Case.offender_key)
         .order_by(func.count().filter(open_case).desc(), func.count().desc())
     ).all()
-    return [OffenderGroup(offender_key=r[0], total=int(r[1]), open=int(r[2])) for r in rows]
+    # The WHERE filters out NULL offender keys, but that's opaque to the type checker.
+    return [
+        OffenderGroup(offender_key=str(r[0]), total=int(r[1]), open=int(r[2])) for r in rows
+    ]
