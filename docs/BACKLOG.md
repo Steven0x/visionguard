@@ -106,6 +106,16 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 **Done when:** an evidence pack verifies (hashes match, timestamp token valid) using a standalone verify script; nothing in the evidence bucket can be overwritten.
 **Agents:** reviewer, red-team
 
+> **Pre-production requirement (CSAM):** the capture/upload path is a SECOND choke point where
+> open-web imagery enters storage (alongside Slice 4's `add_image_candidate`). Both must pass
+> PhotoDNA-style CSAM hash-scanning before production; `capture_csam_ready()` fails closed
+> today (refuses to store when the real backend runs without a configured scanner). See
+> `docs/specs/evidence.md`, ADR 0009.
+> **Delivered:** SSRF-safe browser egress (fetch-through-SafeFetcher + fulfill, no DNS rebind),
+> write-once object-locked evidence bucket, RFC 3161 timestamping (+ untimestamped retry beat),
+> chain-of-custody, `requires_evidence_pack()` filled (fresh sealed capture gates Filed),
+> admin-only PDF pack (reason + sensitive-opt-in logged), and a standalone `vg verify-evidence`.
+
 ## Slice 8: Claims and the notice generator
 
 - Claim selection per case, limited to what the subject's rights records support (claims matrix)

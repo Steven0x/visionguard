@@ -55,7 +55,8 @@ services:
       /bin/sh -c "
       mc alias set local http://minio:9000 minioadmin minioadmin &&
       mc mb --ignore-existing local/vg-assets &&
-      echo 'bucket vg-assets ready'
+      mc mb --ignore-existing --with-lock local/vg-evidence &&
+      echo 'buckets vg-assets + vg-evidence (object-locked) ready'
       "
 
 volumes:

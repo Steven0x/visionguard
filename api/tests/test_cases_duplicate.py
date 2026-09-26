@@ -12,6 +12,7 @@ from api.app.models.subjects import Subject
 from api.app.services import cases as svc
 from api.app.services.cases import DuplicateOpenCase
 
+from .casehelpers import seal_capture
 from .reviewhelpers import add_candidate, make_subject
 
 
@@ -60,6 +61,7 @@ def test_refile_allowed_after_withdrawn(new_workspace: Workspace) -> None:
     subject_id = make_subject(schema, enforcement_consent=True)
     cid = add_candidate(schema, subject_id, source_url="https://re.example/x")
     case_id = _open(schema, new_workspace.id, cid, subject_id)
+    seal_capture(schema, case_id)  # satisfy the → filed evidence gate
 
     # Drive to withdrawn, then re-file under a different (supported) claim.
     with tenant_session(schema) as session:

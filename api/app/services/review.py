@@ -224,6 +224,15 @@ def confirm_candidate(
         entity_id=str(candidate.id),
         meta={"claim_type": claim_type, "case_id": case.id},
     )
+    # Automatic evidence capture on confirm. trigger_capture COMMITS + enqueues, so it is the
+    # last action in this request (the router's later commit is then a no-op).
+    from api.app.models.evidence import CaptureKind
+    from api.app.services import evidence as evidence_svc
+
+    evidence_svc.trigger_capture(
+        session, workspace_id=workspace_id, case=case,
+        kind=CaptureKind.auto, actor_staff_id=actor_staff_id,
+    )
     return case
 
 

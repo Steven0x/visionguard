@@ -25,7 +25,7 @@ from api.app.services.cases import (
 from api.app.services.workspaces import create_workspace_with_access
 from api.tests.conftest import Fixtures
 
-from .casehelpers import make_case
+from .casehelpers import make_case, seal_capture
 from .reviewhelpers import make_subject
 
 _ALL = list(CaseStatus)
@@ -68,6 +68,7 @@ def test_legal_transitions_succeed_and_write_event(
 ) -> None:
     subject_id = make_subject(ws.schema_name, enforcement_consent=True)  # enforceable + likeness
     case_id = make_case(ws.schema_name, subject_id, status=from_status, claim_type="likeness")
+    seal_capture(ws.schema_name, case_id)  # satisfy the → filed evidence gate
     updated = _transition(ws, case_id, to_status, note="n")
     assert updated.status == to_status
     with tenant_session(ws.schema_name) as session:
@@ -117,6 +118,7 @@ def test_concurrent_transition_conflict(ws: Workspace) -> None:
     case_id = make_case(
         ws.schema_name, subject_id, status=CaseStatus.confirmed, claim_type="likeness"
     )
+    seal_capture(ws.schema_name, case_id)  # so filing clears the evidence gate → reaches the race
     with tenant_session(ws.schema_name) as session_a:
         case = session_a.get(Case, case_id)
         assert case is not None  # in-memory status is still 'confirmed'

@@ -15,7 +15,7 @@ celery = Celery(
     "visionguard",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["worker.tasks", "worker.discovery"],
+    include=["worker.tasks", "worker.discovery", "worker.evidence"],
 )
 
 # In tests we run tasks inline (no broker needed).
@@ -30,6 +30,10 @@ celery.conf.beat_schedule = {
     },
     "discovery-cleanup": {
         "task": "worker.cleanup_expired_thumbnails",
+        "schedule": 86400.0,
+    },
+    "evidence-retry-timestamps": {
+        "task": "worker.retry_untimestamped_captures",
         "schedule": 86400.0,
     },
 }

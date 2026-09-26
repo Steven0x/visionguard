@@ -57,6 +57,33 @@ def create_workspace_cmd(
     typer.echo(f"created workspace id={ws.id} slug={ws.slug} schema={ws.schema_name}")
 
 
+@app.command("verify-evidence")
+def verify_evidence_cmd(
+    workspace_id: int = typer.Option(..., help="Workspace id"),
+    case_id: int = typer.Option(..., help="Case id"),
+    capture_id: int = typer.Option(..., help="Evidence capture id"),
+) -> None:
+    """Standalone re-check of a capture: re-hash every artifact + verify the timestamp token."""
+    from api.app.db.base import schema_for_workspace
+    from api.app.db.session import tenant_session
+    from api.app.services import evidence as svc
+
+    schema = schema_for_workspace(workspace_id)
+    with tenant_session(schema) as session:
+        capture = svc.get_capture(session, capture_id)
+        if capture is None or capture.case_id != case_id:
+            raise typer.BadParameter("capture not found for that case")
+        result = svc.verify_capture(
+            session, schema=schema, capture=capture, actor_staff_id=None, reason="cli verify"
+        )
+    for name, ok in result.files.items():
+        typer.echo(f"{'OK  ' if ok else 'BAD '} {name}")
+    typer.echo(f"manifest: {'OK' if result.manifest_ok else 'BAD'}")
+    typer.echo(f"timestamp: {result.timestamp_ok}")
+    typer.echo("VERIFIED" if result.ok else "VERIFICATION FAILED")
+    raise typer.Exit(0 if result.ok else 1)
+
+
 @app.command("mint-token")
 def mint_token_cmd(
     clerk_user_id: str = typer.Option(..., help="Staff clerk_user_id (the token 'sub')"),

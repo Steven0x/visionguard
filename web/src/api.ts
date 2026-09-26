@@ -675,3 +675,106 @@ export const assignCase = (
     method: "POST",
     body: JSON.stringify({ staff_id: staffId }),
   });
+
+// ── Slice 7: evidence ────────────────────────────────────────────────────────
+
+export interface EvidenceCapture {
+  id: number;
+  kind: "auto" | "recapture" | "proof_of_removal" | "manual_upload";
+  status: "pending" | "sealed" | "failed";
+  sensitive: boolean;
+  requested_url: string | null;
+  final_url: string | null;
+  http_status: number | null;
+  page_title: string | null;
+  timestamp_status: "ok" | "untimestamped" | null;
+  tsa_time: string | null;
+  manifest_sha256: string | null;
+  error: string | null;
+  capture_finished_at: string | null;
+  created_at: string;
+}
+
+export interface EvidenceArtifact {
+  name: string;
+  sha256: string;
+  content_type: string;
+  size_bytes: number;
+}
+
+export interface CustodyEvent {
+  action: string;
+  actor_staff_id: number | null;
+  reason: string | null;
+  detail: string | null;
+  created_at: string;
+}
+
+export interface EvidenceDetail {
+  capture: EvidenceCapture;
+  artifacts: EvidenceArtifact[];
+  custody: CustodyEvent[];
+}
+
+export interface VerifyResult {
+  ok: boolean;
+  files: Record<string, boolean>;
+  manifest_ok: boolean;
+  timestamp_ok: boolean | null;
+}
+
+const caseBase = (wsId: number, caseId: number) =>
+  `/workspaces/${wsId}/cases/${caseId}/evidence`;
+
+export const listEvidence = (token: string, wsId: number, caseId: number) =>
+  request<EvidenceCapture[]>(token, caseBase(wsId, caseId));
+
+export const getEvidence = (token: string, wsId: number, caseId: number, eid: number) =>
+  request<EvidenceDetail>(token, `${caseBase(wsId, caseId)}/${eid}`);
+
+export const recapture = (token: string, wsId: number, caseId: number) =>
+  request<EvidenceCapture>(token, `${caseBase(wsId, caseId)}/recapture`, { method: "POST" });
+
+export const uploadEvidence = (
+  token: string,
+  wsId: number,
+  caseId: number,
+  file: File,
+  note: string,
+) => {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("note", note);
+  return request<EvidenceCapture>(token, `${caseBase(wsId, caseId)}/upload`, {
+    method: "POST",
+    body: form,
+  });
+};
+
+export const verifyEvidence = (
+  token: string,
+  wsId: number,
+  caseId: number,
+  eid: number,
+  reason: string,
+) =>
+  request<VerifyResult>(
+    token,
+    `${caseBase(wsId, caseId)}/${eid}/verify?reason=${encodeURIComponent(reason)}`,
+  );
+
+export const evidenceArtifactUrl = (
+  token: string,
+  wsId: number,
+  caseId: number,
+  eid: number,
+  name: string,
+  reason: string,
+) =>
+  request<{ url: string }>(
+    token,
+    `${caseBase(wsId, caseId)}/${eid}/artifacts/${name}?reason=${encodeURIComponent(reason)}`,
+  );
+
+export const evidencePackUrl = (wsId: number, caseId: number, reason: string, includeSensitive: boolean) =>
+  `${API_BASE_URL}${caseBase(wsId, caseId)}/pack.pdf?reason=${encodeURIComponent(reason)}&include_sensitive=${includeSensitive}`;

@@ -19,6 +19,15 @@ from api.app.models.discovery import (
     RunStatus,
     ScanFrequency,
 )
+from api.app.models.evidence import (
+    CaptureKind,
+    CaptureStatus,
+    CustodyAction,
+    CustodyEvent,
+    EvidenceArtifact,
+    EvidenceCapture,
+    TimestampStatus,
+)
 from api.app.models.public import Staff, StaffRole, StaffWorkspaceAccess, Workspace
 from api.app.models.review import (
     DismissReason,
@@ -54,10 +63,17 @@ __all__ = [
     "CaseEventKind",
     "CaseNote",
     "CaseStatus",
+    "CaptureKind",
+    "CaptureStatus",
+    "CustodyAction",
+    "CustodyEvent",
     "DiscoveryCandidate",
     "DiscoveryRun",
     "DiscoverySettings",
     "DismissReason",
+    "EvidenceArtifact",
+    "EvidenceCapture",
+    "TimestampStatus",
     "ReviewDecision",
     "ReviewDecisionKind",
     "ReviewStatus",

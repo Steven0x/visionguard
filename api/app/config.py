@@ -90,6 +90,21 @@ class Settings(BaseSettings):
     # A transition sets due_at = now + days[new_state]; terminal states clear it.
     case_due_days: str = "confirmed:2,filed:3,removed:1,countered:5,escalated:7,monitoring:14"
 
+    # Evidence capture (Slice 7).
+    capture_backend: str = "playwright"  # "playwright" (prod) | "fake" (tests/CI)
+    tsa_backend: str = "rfc3161"  # "rfc3161" (prod) | "fake" (tests/CI)
+    storage_evidence_bucket: str = "vg-evidence"  # write-once, object-locked; separate bucket
+    evidence_object_lock_mode: str = "GOVERNANCE"  # GOVERNANCE | COMPLIANCE
+    evidence_retention_days: int = 365  # object-lock retention (dev overrides to ~1 in .env)
+    evidence_freshness_days: int = 7  # a Filed case needs a sealed capture newer than this
+    capture_nav_timeout_ms: int = 45_000
+    capture_max_page_px: int = 20_000  # cap full-page screenshot height
+    capture_tool_version: str = "vg-capture/1.0.0"
+    # TSAs tried in order; first answer wins. Real backend only.
+    tsa_urls: str = (
+        "https://freetsa.org/tsr,http://timestamp.digicert.com,http://timestamp.sectigo.com"
+    )
+
     @property
     def allowed_origin_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
@@ -107,6 +122,10 @@ class Settings(BaseSettings):
             except ValueError:
                 continue
         return result
+
+    @property
+    def tsa_url_list(self) -> list[str]:
+        return [u.strip() for u in self.tsa_urls.split(",") if u.strip()]
 
     @property
     def review_leak_domain_set(self) -> set[str]:

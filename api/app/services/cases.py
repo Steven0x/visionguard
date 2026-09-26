@@ -76,14 +76,12 @@ def allowed_transitions(status: CaseStatus) -> list[CaseStatus]:
     return sorted(TRANSITIONS.get(status, frozenset()), key=lambda s: s.value)
 
 
-def requires_evidence_pack(case: Case) -> bool:
-    """Placeholder evidence gate for ``→ filed`` (CLAUDE.md #6 / Slice 7).
+def requires_evidence_pack(session: Session, case: Case) -> bool:
+    """Evidence gate for ``→ filed`` (CLAUDE.md #6): the case must have at least one sealed
+    capture newer than EVIDENCE_FRESHNESS_DAYS. This is the single choke point for that rule."""
+    from api.app.services.evidence import has_fresh_sealed_capture
 
-    Returns True in Phase 1 (filing is allowed now). Slice 7 replaces this body to require an
-    immutable EvidencePack for the case; this is the single choke point where that gate lands.
-    """
-    _ = case
-    return True
+    return has_fresh_sealed_capture(session, case.id)
 
 
 def _due_at_for(status: CaseStatus) -> datetime | None:
@@ -268,6 +266,16 @@ def transition(
         entity_id=str(case.id),
         meta={"from": from_status.value, "to": to_status.value, "reason": reason},
     )
+    # Proof-of-removal capture on Removed. trigger_capture COMMITS + enqueues, so it must be the
+    # last thing we do to the case here (mirrors the enqueue-after-commit pattern).
+    if to_status == CaseStatus.removed:
+        from api.app.models.evidence import CaptureKind
+        from api.app.services import evidence as evidence_svc
+
+        evidence_svc.trigger_capture(
+            session, workspace_id=workspace_id, case=case,
+            kind=CaptureKind.proof_of_removal, actor_staff_id=actor_staff_id,
+        )
     return case
 
 
@@ -279,8 +287,10 @@ def _check_filing_preconditions(session: Session, case: Case) -> None:
         raise CasePreconditionFailed(
             f"claim '{case.claim_type}' is no longer supported for this subject"
         )
-    if not requires_evidence_pack(case):  # Slice 7 makes this a real check
-        raise CasePreconditionFailed("an evidence pack is required before filing")
+    if not requires_evidence_pack(session, case):
+        raise CasePreconditionFailed(
+            "a sealed evidence capture (within the freshness window) is required before filing"
+        )
 
 
 def change_claim(

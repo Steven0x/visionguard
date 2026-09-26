@@ -239,7 +239,10 @@ def _counts(schema: str, subject_id: int) -> tuple[int, int]:
 
 def seed_demo() -> DemoResult:
     """Idempotently seed the demo workspace + subject + assets + discovery candidates."""
+    from api.app.storage.evidence import get_evidence_storage
+
     get_storage().ensure_bucket()
+    get_evidence_storage().ensure_bucket()  # write-once evidence bucket (used on confirm)
     workspace = _get_or_create_workspace()
     schema = workspace.schema_name
     subject_id = _ensure_subject(schema)

@@ -15,11 +15,18 @@ import {
 } from "../api";
 import { useToken } from "../useToken";
 import { CaseStatusBadge } from "./CaseStatusBadge";
+import { EvidenceSection } from "./EvidenceSection";
 
 const CLAIM_TYPES = ["copyright", "likeness", "ncii", "impersonation", "trademark"];
 const NOTE_REQUIRED: CaseStatus[] = ["withdrawn"];
 
-export function CasesSection({ workspaceId }: { workspaceId: number }) {
+export function CasesSection({
+  workspaceId,
+  isAdmin,
+}: {
+  workspaceId: number;
+  isAdmin: boolean;
+}) {
   const getToken = useToken();
   const [rows, setRows] = useState<CaseRow[]>([]);
   const [offenders, setOffenders] = useState<OffenderGroup[]>([]);
@@ -55,6 +62,7 @@ export function CasesSection({ workspaceId }: { workspaceId: number }) {
       <CaseDetailView
         workspaceId={workspaceId}
         caseId={openId}
+        isAdmin={isAdmin}
         onBack={() => {
           setOpenId(null);
           void reload();
@@ -149,10 +157,12 @@ export function CasesSection({ workspaceId }: { workspaceId: number }) {
 function CaseDetailView({
   workspaceId,
   caseId,
+  isAdmin,
   onBack,
 }: {
   workspaceId: number;
   caseId: number;
+  isAdmin: boolean;
   onBack: () => void;
 }) {
   const getToken = useToken();
@@ -268,6 +278,8 @@ function CaseDetailView({
           act(async () => assignCase(await getToken(), workspaceId, caseId, sid))
         }
       />
+
+      <EvidenceSection workspaceId={workspaceId} caseId={caseId} isAdmin={isAdmin} />
 
       {/* Timeline */}
       <div>

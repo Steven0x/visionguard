@@ -42,6 +42,8 @@ jobs:
       EMBEDDER_BACKEND: fake
       FETCHER_BACKEND: fake
       PROVIDER_BACKEND: fake
+      CAPTURE_BACKEND: fake
+      TSA_BACKEND: fake
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

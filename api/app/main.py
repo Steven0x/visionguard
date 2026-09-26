@@ -10,6 +10,7 @@ from api.app.routers import (
     assets,
     cases,
     discovery,
+    evidence,
     health,
     me,
     records,
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(discovery.router)
     app.include_router(review.router)
     app.include_router(cases.router)
+    app.include_router(evidence.router)
     return app
 
 

@@ -106,7 +106,7 @@ export function WorkspaceDetail({
         isAdmin={isAdmin}
         keepBlurDefault={keepBlurDefault}
       />
-      <CasesSection workspaceId={workspaceId} />
+      <CasesSection workspaceId={workspaceId} isAdmin={isAdmin} />
 
       <section className="space-y-2">
         <div className="flex items-center justify-between">

@@ -22,6 +22,7 @@ dependencies = [
     "pgvector>=0.3",
     "pillow>=10.4",
     "numpy>=1.26",
+    "reportlab>=4.2",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +37,12 @@ dev = [
 ml = [
     "torch>=2.2",
     "open-clip-torch>=2.24",
+]
+# Real evidence capture + timestamping — installed on the worker in prod, NOT in CI (which
+# uses CAPTURE_BACKEND=fake / TSA_BACKEND=fake). Both are lazy-imported.
+capture = [
+    "playwright>=1.47",
+    "rfc3161ng>=2.1.3",
 ]
 
 [project.scripts]

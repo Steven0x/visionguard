@@ -6,6 +6,12 @@ from datetime import UTC, datetime
 
 from api.app.db.session import tenant_session
 from api.app.models.cases import Case, CaseStatus
+from api.app.models.evidence import (
+    CaptureKind,
+    CaptureStatus,
+    EvidenceCapture,
+    TimestampStatus,
+)
 
 
 def make_case(
@@ -40,3 +46,19 @@ def make_case(
 
 def past_due() -> datetime:
     return datetime(2020, 1, 1, tzinfo=UTC)
+
+
+def seal_capture(schema: str, case_id: int) -> int:
+    """Insert a fresh sealed evidence capture so the case satisfies the → filed gate."""
+    with tenant_session(schema) as session:
+        capture = EvidenceCapture(
+            case_id=case_id,
+            kind=CaptureKind.auto,
+            status=CaptureStatus.sealed,
+            capture_finished_at=datetime.now(UTC),
+            manifest_sha256="0" * 64,
+            timestamp_status=TimestampStatus.ok,
+        )
+        session.add(capture)
+        session.flush()
+        return capture.id
