@@ -26,7 +26,7 @@ from api.app.providers.base import ProviderResult
 from api.app.services import discovery as svc
 from api.app.services.claim_support import subject_enforcement
 from api.app.services.keywords import identifiers as get_identifiers
-from api.app.services.review import candidate_referenced_by_confirmed_case
+from api.app.services.review import candidate_referenced_by_open_case
 from api.app.storage import get_storage
 from sqlalchemy import select
 
@@ -280,8 +280,8 @@ def cleanup_expired_thumbnails() -> int:
                 candidate = session.get(DiscoveryCandidate, candidate_id)
                 if candidate is None or candidate.thumbnail_key is None:
                     continue
-                # Re-check the guard at delete time (a confirm may have landed since the scan).
-                if candidate_referenced_by_confirmed_case(session, candidate_id):
+                # Re-check the guard at delete time (a case may have opened since the scan).
+                if candidate_referenced_by_open_case(session, candidate_id):
                     continue
                 deleted_keys.append(candidate.thumbnail_key)
                 session.delete(candidate)

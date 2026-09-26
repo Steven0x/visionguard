@@ -11,6 +11,7 @@ import {
   type WorkspaceDetail as Detail,
 } from "../api";
 import { useToken } from "../useToken";
+import { CasesSection } from "./CasesSection";
 import { DiscoverySettingsEditor } from "./DiscoverySettingsEditor";
 import { ReviewInbox } from "./ReviewInbox";
 import { SubjectDetail } from "./SubjectDetail";
@@ -105,6 +106,7 @@ export function WorkspaceDetail({
         isAdmin={isAdmin}
         keepBlurDefault={keepBlurDefault}
       />
+      <CasesSection workspaceId={workspaceId} />
 
       <section className="space-y-2">
         <div className="flex items-center justify-between">

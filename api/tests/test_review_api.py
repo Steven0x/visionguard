@@ -8,9 +8,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from api.app.db.session import tenant_session
+from api.app.models.cases import Case
 from api.app.models.discovery import DiscoveryCandidate, ReviewStatus
 from api.app.models.public import Workspace
-from api.app.models.review import Case, ReviewDecision, ReviewDecisionKind
+from api.app.models.review import ReviewDecision, ReviewDecisionKind
 
 from .reviewhelpers import add_candidate, make_subject
 

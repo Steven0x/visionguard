@@ -18,11 +18,11 @@ class AssetDeletionBlocked(Exception):
 
 
 def can_delete_asset(session: Session, asset: Asset) -> bool:
-    """False when a confirmed case references this asset (Slice 5) — evidence can't be deleted
-    out from under an open case."""
-    from api.app.services.review import asset_referenced_by_confirmed_case
+    """False when an open (non-terminal) case references this asset — evidence can't be deleted
+    out from under an in-flight enforcement."""
+    from api.app.services.review import asset_referenced_by_open_case
 
-    return not asset_referenced_by_confirmed_case(session, asset.id)
+    return not asset_referenced_by_open_case(session, asset.id)
 
 
 def list_assets(session: Session, subject_id: int) -> list[Asset]:

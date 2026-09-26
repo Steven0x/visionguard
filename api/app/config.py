@@ -86,9 +86,27 @@ class Settings(BaseSettings):
     review_risky_keywords: str = "leaked,leak,free,onlyfans,nude,nudes,stolen,xxx"
     review_bulk_dismiss_max: int = 500
 
+    # Cases (Slice 6). Follow-up timer per state: "state:days,..." (config, not hard-coded).
+    # A transition sets due_at = now + days[new_state]; terminal states clear it.
+    case_due_days: str = "confirmed:2,filed:3,removed:1,countered:5,escalated:7,monitoring:14"
+
     @property
     def allowed_origin_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
+    @property
+    def case_due_days_map(self) -> dict[str, int]:
+        result: dict[str, int] = {}
+        for pair in self.case_due_days.split(","):
+            pair = pair.strip()
+            if not pair or ":" not in pair:
+                continue
+            state, _, days = pair.partition(":")
+            try:
+                result[state.strip()] = int(days)
+            except ValueError:
+                continue
+        return result
 
     @property
     def review_leak_domain_set(self) -> set[str]:

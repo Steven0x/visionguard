@@ -6,12 +6,12 @@ from datetime import date
 
 from api.app.db.session import tenant_session
 from api.app.models.assets import Asset, AssetStatus
+from api.app.models.cases import Case, CaseStatus
 from api.app.models.discovery import (
     CandidateKind,
     DiscoveryCandidate,
     ReviewStatus,
 )
-from api.app.models.review import Case, CaseStatus
 from api.app.models.rights import AgentAuthorization, ConsentRecord, ConsentType, RecordStatus
 from api.app.models.subjects import AllowlistEntry, AllowlistKind, Subject
 from api.app.services.discovery import _source_key, canonicalize_url

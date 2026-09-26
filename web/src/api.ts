@@ -535,3 +535,143 @@ export const updateReviewPrefs = (token: string, keepBlur: boolean) =>
     method: "PUT",
     body: JSON.stringify({ keep_blur: keepBlur }),
   });
+
+// ── Slice 6: cases & lifecycle ───────────────────────────────────────────────
+
+export type CaseStatus =
+  | "discovered"
+  | "confirmed"
+  | "dismissed"
+  | "filed"
+  | "removed"
+  | "countered"
+  | "escalated"
+  | "withdrawn"
+  | "monitoring"
+  | "recovered"
+  | "closed";
+
+export interface CaseRow {
+  id: number;
+  subject_id: number;
+  candidate_id: number | null;
+  matched_asset_id: number | null;
+  claim_type: string;
+  status: CaseStatus;
+  source_url: string | null;
+  offender_key: string | null;
+  assigned_staff_id: number | null;
+  due_at: string | null;
+  overdue: boolean;
+  created_at: string;
+}
+
+export interface CaseEvent {
+  id: number;
+  kind: "created" | "transition" | "claim_change" | "assignment" | "link";
+  from_status: string | null;
+  to_status: string | null;
+  related_case_id: number | null;
+  actor_staff_id: number | null;
+  reason: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface CaseNote {
+  id: number;
+  author_staff_id: number | null;
+  body: string;
+  created_at: string;
+}
+
+export interface CaseDetail {
+  case: CaseRow;
+  allowed_transitions: CaseStatus[];
+  timeline: CaseEvent[];
+  notes: CaseNote[];
+}
+
+export interface OffenderGroup {
+  offender_key: string;
+  total: number;
+  open: number;
+}
+
+export interface CaseFilters {
+  subject_id?: number;
+  status?: CaseStatus;
+  claim_type?: string;
+  offender_key?: string;
+  assigned_staff_id?: number;
+  overdue?: boolean;
+  min_age_days?: number;
+}
+
+export const listCasesFiltered = (token: string, wsId: number, filters: CaseFilters = {}) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) {
+    if (v !== undefined && v !== "" && v !== null) q.set(k, String(v));
+  }
+  const qs = q.toString();
+  return request<CaseRow[]>(token, `${wsBase(wsId)}/cases${qs ? `?${qs}` : ""}`);
+};
+
+export const listOffenders = (token: string, wsId: number) =>
+  request<OffenderGroup[]>(token, `${wsBase(wsId)}/cases/offenders`);
+
+export const getCaseDetail = (token: string, wsId: number, caseId: number) =>
+  request<CaseDetail>(token, `${wsBase(wsId)}/cases/${caseId}`);
+
+export const transitionCase = (
+  token: string,
+  wsId: number,
+  caseId: number,
+  toStatus: CaseStatus,
+  opts: { reason?: string; note?: string } = {},
+) =>
+  request<CaseRow>(token, `${wsBase(wsId)}/cases/${caseId}/transition`, {
+    method: "POST",
+    body: JSON.stringify({ to_status: toStatus, ...opts }),
+  });
+
+export const changeCaseClaim = (
+  token: string,
+  wsId: number,
+  caseId: number,
+  claimType: string,
+  note: string,
+) =>
+  request<CaseRow>(token, `${wsBase(wsId)}/cases/${caseId}/claim`, {
+    method: "POST",
+    body: JSON.stringify({ claim_type: claimType, note }),
+  });
+
+export const refileCase = (
+  token: string,
+  wsId: number,
+  caseId: number,
+  claimType: string,
+  note: string,
+) =>
+  request<CaseRow>(token, `${wsBase(wsId)}/cases/${caseId}/refile`, {
+    method: "POST",
+    body: JSON.stringify({ claim_type: claimType, note }),
+  });
+
+export const addCaseNote = (token: string, wsId: number, caseId: number, body: string) =>
+  request<CaseNote>(token, `${wsBase(wsId)}/cases/${caseId}/notes`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+
+export const assignCase = (
+  token: string,
+  wsId: number,
+  caseId: number,
+  staffId: number | null,
+) =>
+  request<CaseRow>(token, `${wsBase(wsId)}/cases/${caseId}/assign`, {
+    method: "POST",
+    body: JSON.stringify({ staff_id: staffId }),
+  });

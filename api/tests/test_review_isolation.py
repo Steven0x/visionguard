@@ -7,12 +7,8 @@ import uuid
 from sqlalchemy import select
 
 from api.app.db.session import tenant_session
-from api.app.models.review import (
-    Case,
-    CaseStatus,
-    ReviewDecision,
-    ReviewDecisionKind,
-)
+from api.app.models.cases import Case, CaseStatus
+from api.app.models.review import ReviewDecision, ReviewDecisionKind
 from api.app.models.subjects import Subject
 from api.app.services.workspaces import create_workspace_with_access
 from api.tests.conftest import Fixtures

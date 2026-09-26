@@ -2,6 +2,13 @@
 
 from api.app.models.assets import Asset, AssetStatus, SubjectKeyword
 from api.app.models.audit import AuditLog
+from api.app.models.cases import (
+    Case,
+    CaseEvent,
+    CaseEventKind,
+    CaseNote,
+    CaseStatus,
+)
 from api.app.models.discovery import (
     CandidateKind,
     DiscoveryCandidate,
@@ -14,8 +21,6 @@ from api.app.models.discovery import (
 )
 from api.app.models.public import Staff, StaffRole, StaffWorkspaceAccess, Workspace
 from api.app.models.review import (
-    Case,
-    CaseStatus,
     DismissReason,
     ReviewDecision,
     ReviewDecisionKind,
@@ -45,6 +50,9 @@ __all__ = [
     "AuditLog",
     "CandidateKind",
     "Case",
+    "CaseEvent",
+    "CaseEventKind",
+    "CaseNote",
     "CaseStatus",
     "DiscoveryCandidate",
     "DiscoveryRun",

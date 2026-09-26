@@ -3,20 +3,23 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from api.app.auth.deps import get_tenant_session, require_role, require_workspace_access
 from api.app.config import get_settings
 from api.app.models.assets import Asset
+from api.app.models.cases import Case
 from api.app.models.discovery import CandidateKind, DiscoveryCandidate
 from api.app.models.public import Staff, StaffRole, Workspace
-from api.app.models.review import Case, DismissReason
+from api.app.models.review import DismissReason
 from api.app.models.subjects import Subject
 from api.app.services import review as svc
 from api.app.services import subjects as subj_service
+from api.app.services.claim_support import ensure_known_claim
 from api.app.services.review import (
     CandidateAllowlisted,
     ClaimNotSupported,
@@ -79,7 +82,7 @@ class InboxItemOut(BaseModel):
 
 
 class ConfirmIn(BaseModel):
-    claim_type: str
+    claim_type: Annotated[str, AfterValidator(ensure_known_claim)]
 
 
 class DismissIn(BaseModel):

@@ -37,7 +37,7 @@ Ask before adding a dependency not listed here. Record significant choices as an
 
 `Workspace` → `Subject` (person or brand) → `RightsRecord` / `ConsentRecord` → `Asset` → `Watch` → `Match` → `Case` → `EvidencePack` + `Action` → `Outcome` / `Recovery`.
 
-Case states: `Discovered → Confirmed | Dismissed`, `Confirmed → Filed`, `Filed → Removed | Countered | Escalated`, `Removed → Monitoring → Discovered (reappears) | Closed`, `Escalated → Recovered | Closed`. Transitions are only allowed through the case service, which enforces the rules above and writes an audit event.
+Case states: `Discovered → Confirmed | Dismissed`, `Confirmed → Filed`, `Filed → Removed | Countered | Escalated | Withdrawn`, `Countered → Escalated | Closed`, `Removed → Monitoring → Discovered (reappears) | Closed`, `Escalated → Recovered | Closed`. Terminal states: `Dismissed`, `Withdrawn`, `Recovered`, `Closed`. `Withdrawn` (the filed notice is retracted; requires a note) corrects a wrong claim type — you don't route a claim change back through `Removed`/`Monitoring` (that would write a false removal); instead withdraw and **re-file by opening a new case from the same candidate** (the duplicate check ignores terminal cases), linked to the withdrawn one in both timelines. Removal-rate and time-to-removal count only real `Removed` transitions; `Withdrawn` cases are excluded from the denominator and reported separately. Transitions are only allowed through the case service, which enforces these rules and writes both an audit event and a `case_event` (the timeline). See `docs/specs/cases.md`.
 
 ## How to work in this repo
 

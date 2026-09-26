@@ -26,6 +26,14 @@ from api.app.services.authorizations import active_authorization
 
 CLAIM_TYPES = ("copyright", "trademark", "likeness", "ncii", "impersonation")
 
+
+def ensure_known_claim(value: str) -> str:
+    """Validate a claim_type against the matrix. Defense-in-depth for API schemas: the support
+    check already rejects unsupported claims, but this keeps non-matrix strings from persisting."""
+    if value not in CLAIM_TYPES:
+        raise ValueError(f"unknown claim_type {value!r}; expected one of {', '.join(CLAIM_TYPES)}")
+    return value
+
 # Single source of truth for the matrix approval state surfaced to the API/UI. Update this
 # (and the banner in docs/legal/claims-matrix.md) together when counsel signs off.
 MATRIX_STATUS = "draft — pending counsel"

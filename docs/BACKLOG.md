@@ -90,6 +90,13 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 **Done when:** illegal transitions are rejected by the service (tested); a case's full history can be exported.
 **Agents:** reviewer, claims-checker
 
+> **Amended state machine (see `docs/specs/cases.md`, ADR 0008):** added terminal `Withdrawn`
+> (`Filed → Withdrawn`, note required) to correct a wrong claim by re-filing a *new* case from
+> the same candidate (linked, both timelines); `Countered` is non-terminal
+> (`Countered → Escalated | Closed`). Removal metrics count only real `Removed` transitions.
+> **Deferred:** `requires_evidence_pack()` is a placeholder returning `True` (Slice 7 fills it);
+> auto-reopen on reappearance + timer firing/notifications + metrics computation are Slices 9–10.
+
 ## Slice 7: Evidence capture
 
 - On confirm: Playwright captures a full screenshot, raw HTML and a page archive; records URL, time, visible counts (views, followers, price)

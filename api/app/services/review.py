@@ -18,15 +18,15 @@ from sqlalchemy.orm import Session
 
 from api.app.audit.service import record_audit
 from api.app.config import get_settings
+from api.app.models.cases import TERMINAL_STATES, Case
 from api.app.models.discovery import DiscoveryCandidate, ReviewStatus
 from api.app.models.review import (
-    Case,
-    CaseStatus,
     DismissReason,
     ReviewDecision,
     ReviewDecisionKind,
 )
 from api.app.models.subjects import Subject
+from api.app.services import cases as cases_svc
 from api.app.services.claim_support import claim_support, subject_enforcement
 from api.app.services.scoring import is_allowlisted
 
@@ -195,16 +195,15 @@ def confirm_candidate(
     session.refresh(candidate)
     candidate.matched_at = datetime.now(UTC)
 
-    case = Case(
-        subject_id=subject.id,
-        candidate_id=candidate.id,
-        matched_asset_id=candidate.best_match_asset_id,
+    # The case service is the only path that opens a case (dedupe, offender key, timeline).
+    case = cases_svc.open_case_from_candidate(
+        session,
+        workspace_id=workspace_id,
+        actor_staff_id=actor_staff_id,
+        subject=subject,
+        candidate=candidate,
         claim_type=claim_type,
-        status=CaseStatus.confirmed,
-        opened_by_staff_id=actor_staff_id,
     )
-    session.add(case)
-    session.flush()
     session.add(
         ReviewDecision(
             candidate_id=candidate.id,
@@ -224,15 +223,6 @@ def confirm_candidate(
         entity_type="discovery_candidate",
         entity_id=str(candidate.id),
         meta={"claim_type": claim_type, "case_id": case.id},
-    )
-    record_audit(
-        session,
-        workspace_id=workspace_id,
-        actor_staff_id=actor_staff_id,
-        action="case.created",
-        entity_type="case",
-        entity_id=str(case.id),
-        meta={"claim_type": claim_type, "subject_id": subject.id},
     )
     return case
 
@@ -405,24 +395,33 @@ def _bulk_matches(
 
 
 # ── Guard helpers (used by asset delete + thumbnail cleanup) ──────────────────
+# "Open" = any non-terminal case. Evidence for an in-flight enforcement (confirmed, filed,
+# removed, monitoring, …) must not be deleted out from under it. Terminal cases (dismissed,
+# withdrawn, recovered, closed) no longer pin the asset/candidate.
 
 
-def candidate_referenced_by_confirmed_case(session: Session, candidate_id: int) -> bool:
+def candidate_referenced_by_open_case(session: Session, candidate_id: int) -> bool:
     return (
         session.scalar(
             select(Case.id)
-            .where(Case.candidate_id == candidate_id, Case.status == CaseStatus.confirmed)
+            .where(
+                Case.candidate_id == candidate_id,
+                Case.status.notin_([s.value for s in TERMINAL_STATES]),
+            )
             .limit(1)
         )
         is not None
     )
 
 
-def asset_referenced_by_confirmed_case(session: Session, asset_id: int) -> bool:
+def asset_referenced_by_open_case(session: Session, asset_id: int) -> bool:
     return (
         session.scalar(
             select(Case.id)
-            .where(Case.matched_asset_id == asset_id, Case.status == CaseStatus.confirmed)
+            .where(
+                Case.matched_asset_id == asset_id,
+                Case.status.notin_([s.value for s in TERMINAL_STATES]),
+            )
             .limit(1)
         )
         is not None
