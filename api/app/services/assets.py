@@ -2,19 +2,28 @@
 
 from __future__ import annotations
 
+import hashlib
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.app.audit.service import record_audit
 from api.app.config import get_settings
+from api.app.csam import ScanOutcome, scan_image
 from api.app.images import make_thumbnail, validate_and_load
 from api.app.models.assets import Asset, AssetStatus
+from api.app.models.csam import CsamSource
+from api.app.services.csam_incidents import record_incident
 from api.app.storage import get_storage
 from api.app.storage.keys import object_key
 
 
 class AssetDeletionBlocked(Exception):
     """Raised when a guard hook forbids deleting an asset (e.g. referenced by a case)."""
+
+
+class CsamBlocked(Exception):
+    """Raised when an uploaded image fails the CSAM scan; nothing is stored (CLAUDE.md #7)."""
 
 
 def can_delete_asset(session: Session, asset: Asset) -> bool:
@@ -50,6 +59,19 @@ def create_asset(
 ) -> Asset:
     # Fully decode (decompression-bomb safe) before storing anything; raises InvalidImage.
     image = validate_and_load(data)
+
+    # CSAM gate (CLAUDE.md #7): scan before storing ANY bytes (full-res or thumbnail). Only a
+    # `clean` result proceeds; a match records a minimized incident and stores nothing.
+    outcome = scan_image(data)
+    if outcome is not ScanOutcome.clean:
+        if outcome is ScanOutcome.match:
+            record_incident(
+                session, workspace_id=workspace_id, source=CsamSource.asset_upload,
+                sha256=hashlib.sha256(data).hexdigest(), url=None, subject_id=subject_id,
+                actor_staff_id=actor_staff_id,
+            )
+        raise CsamBlocked("image failed the CSAM scan; nothing was stored")
+
     thumbnail = make_thumbnail(image, get_settings().thumbnail_max_px)
 
     storage = get_storage()

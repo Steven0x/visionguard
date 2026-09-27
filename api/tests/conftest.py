@@ -22,6 +22,9 @@ os.environ.setdefault("PROVIDER_BACKEND", "fake")
 # Use the fake evidence capture + timestamper so tests need no browser/TSA/network.
 os.environ.setdefault("CAPTURE_BACKEND", "fake")
 os.environ.setdefault("TSA_BACKEND", "fake")
+# Fake CSAM scanner (dev/test-only), default "clean"; individual tests flip CSAM_FAKE_RESULT.
+os.environ.setdefault("CSAM_SCANNER_BACKEND", "fake")
+os.environ.setdefault("CSAM_FAKE_RESULT", "clean")
 os.environ.setdefault(
     "DATABASE_URL",
     "postgresql+psycopg://visionguard:visionguard@localhost:5433/visionguard",

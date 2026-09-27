@@ -9,6 +9,7 @@ from api.app.config import get_settings
 from api.app.routers import (
     assets,
     cases,
+    csam,
     discovery,
     evidence,
     health,
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(review.router)
     app.include_router(cases.router)
     app.include_router(evidence.router)
+    app.include_router(csam.router)
     return app
 
 

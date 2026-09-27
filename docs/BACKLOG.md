@@ -62,7 +62,7 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 **Done when:** a scheduled run for one workspace produces candidates with source, thumbnail and URL; provider costs are logged per workspace.
 **Agents:** reviewer, red-team (SSRF, fetcher)
 
-> **Pre-production requirement (CSAM):** discovery ingests thumbnails of found content from the open web, which may include illegal imagery. Before production, every fetched image MUST pass PhotoDNA-style CSAM hash-scanning at the `add_image_candidate` choke point BEFORE it is stored or displayed; a positive match must be routed to the NCMEC report path and never stored/shown (CLAUDE.md #7). Slice 4 defers the scanner itself but is structured so it can be dropped in at one place. This must be closed before any real crawling.
+> **Pre-production requirement (CSAM):** discovery ingests thumbnails of found content from the open web, which may include illegal imagery. Before production, every fetched image MUST pass PhotoDNA-style CSAM hash-scanning at the `add_image_candidate` choke point BEFORE it is stored or displayed; a positive match must be routed to the NCMEC report path and never stored/shown (CLAUDE.md #7). Slice 4 defers the scanner itself but is structured so it can be dropped in at one place. This must be closed before any real crawling. **Update (Slice 7):** the per-image `CsamScanner` gate is now wired here and everywhere else imagery is stored — only the real scanner backend remains (ADR 0010).
 > **Deferred:** Drive/folder URL pulls; matching/scoring of candidates (Slice 5). Slice 4 is provider-APIs + manual intake only. See `docs/specs/discovery.md`.
 
 ## Slice 5: Matching and the review inbox
@@ -106,11 +106,14 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 **Done when:** an evidence pack verifies (hashes match, timestamp token valid) using a standalone verify script; nothing in the evidence bucket can be overwritten.
 **Agents:** reviewer, red-team
 
-> **Pre-production requirement (CSAM):** the capture/upload path is a SECOND choke point where
-> open-web imagery enters storage (alongside Slice 4's `add_image_candidate`). Both must pass
-> PhotoDNA-style CSAM hash-scanning before production; `capture_csam_ready()` fails closed
-> today (refuses to store when the real backend runs without a configured scanner). See
-> `docs/specs/evidence.md`, ADR 0009.
+> **CSAM (interface DONE; real backend pre-production):** a per-image `CsamScanner` gate
+> (`api/app/csam.py`, ADR 0010) now runs at EVERY point open-web/uploaded imagery is stored —
+> discovery `add_image_candidate`, evidence capture (browser egress + screenshot), manual
+> evidence upload, and Slice-3 asset upload. Nothing is stored/sealed without a `clean` result;
+> a match records a minimized `csam_incidents` row (hash/URL/time only) in an admin-only
+> escalation queue; `none` (default) and errors fail closed. The remaining pre-production task
+> is the real PhotoDNA/Safer backend behind the same interface. See `docs/specs/evidence.md`,
+> ADR 0009 + 0010.
 > **Delivered:** SSRF-safe browser egress (fetch-through-SafeFetcher + fulfill, no DNS rebind),
 > write-once object-locked evidence bucket, RFC 3161 timestamping (+ untimestamped retry beat),
 > chain-of-custody, `requires_evidence_pack()` filled (fresh sealed capture gates Filed),

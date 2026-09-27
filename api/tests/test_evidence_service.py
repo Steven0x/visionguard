@@ -85,7 +85,9 @@ def test_verify_passes_then_fails_on_tamper(new_workspace: Workspace) -> None:
         assert result.ok is False and result.files["screenshot.png"] is False
 
 
-def test_csam_gate_fails_closed_without_scanner(new_workspace: Workspace) -> None:
+def test_csam_gate_fails_closed_without_scanner(
+    new_workspace: Workspace, monkeypatch
+) -> None:
     schema = new_workspace.schema_name
     case_id = _open_case(schema)
     with tenant_session(schema) as session:
@@ -100,16 +102,12 @@ def test_csam_gate_fails_closed_without_scanner(new_workspace: Workspace) -> Non
 
     from worker.evidence import capture_evidence
 
-    settings = get_settings()
-    settings.capture_backend = "playwright"  # real backend + no scanner → must refuse
-    try:
-        assert capture_evidence(new_workspace.id, capture_id) == "blocked"
-    finally:
-        settings.capture_backend = "fake"
+    monkeypatch.setattr(get_settings(), "csam_scanner_backend", "none")  # no scanner → refuse
+    assert capture_evidence(new_workspace.id, capture_id) == "blocked"
 
     with tenant_session(schema) as session:
         blocked = ev.get_capture(session, capture_id)
-        assert blocked is not None and blocked.status == CaptureStatus.failed
+        assert blocked is not None and blocked.status == CaptureStatus.blocked
         assert ev.list_artifacts(session, capture_id) == []  # nothing stored
 
 

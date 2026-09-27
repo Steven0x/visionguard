@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from api.app.csam import ScanOutcome, scan_image
 from api.app.net.fetcher import Fetcher, FetchResult, get_fetcher
 from api.app.net.ssrf import SsrfError
 
@@ -54,4 +55,11 @@ def fulfill_or_abort(method: str, url: str, fetcher: Fetcher | None = None) -> R
         result = fetcher.fetch(url)
     except SsrfError as exc:
         return RouteDecision(action="abort", reason=str(exc))
+    # CSAM gate at the single browser egress point (CLAUDE.md #7): every image the browser loads
+    # is scanned here, so a non-clean image is aborted and never enters the rendered page, the
+    # screenshot, or the sealed MHTML/HTML archive. Non-image responses (HTML/CSS/JS) pass.
+    if result.content_type.startswith("image/") and scan_image(result.content) is not (
+        ScanOutcome.clean
+    ):
+        return RouteDecision(action="abort", reason="csam: blocked image subresource")
     return RouteDecision(action="fulfill", result=result)

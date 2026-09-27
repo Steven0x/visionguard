@@ -35,6 +35,15 @@ def test_guard_aborts_blocked_target() -> None:
         assert fulfill_or_abort("GET", url, _BlockingFetcher()).action == "abort"
 
 
+def test_guard_aborts_image_that_fails_csam(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Every image the browser loads is CSAM-scanned at this egress point; a non-clean image is
+    # aborted so it never enters the page/screenshot/sealed archive.
+    from api.app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "csam_fake_result", "match")
+    assert fulfill_or_abort("GET", "https://good.example/x.png", FakeFetcher()).action == "abort"
+
+
 def test_evidence_storage_is_write_once() -> None:
     store = FakeEvidenceStorage()
     store.seal_object("k/1/screenshot.png", b"first", "image/png")

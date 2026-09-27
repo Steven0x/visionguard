@@ -135,6 +135,41 @@ def test_pack_pdf_is_admin_only_and_needs_reason(
     assert client.get(f"{base}?reason=x", headers=auth_header(clerk)).status_code == 403
 
 
+def test_manual_upload_csam_match_is_blocked_and_queued(
+    client: TestClient, new_workspace: Workspace, auth_header: Auth, monkeypatch
+) -> None:
+    from api.app.config import get_settings
+
+    hdr = auth_header("admin_user")
+    case_id = _confirm_case(client, new_workspace, hdr)  # confirm auto-capture ran clean first
+    monkeypatch.setattr(get_settings(), "csam_fake_result", "match")
+
+    up = client.post(
+        f"/workspaces/{new_workspace.id}/cases/{case_id}/evidence/upload",
+        headers=hdr,
+        data={"note": "uploaded screenshot"},
+        files={"file": ("shot.png", _png(), "image/png")},
+    )
+    assert up.status_code == 422  # refused by the CSAM scan
+
+    # It landed in the admin-only escalation queue; a reviewer can't see it.
+    incidents = client.get(f"/workspaces/{new_workspace.id}/csam-incidents", headers=hdr)
+    assert incidents.status_code == 200
+    assert any(i["source"] == "manual_upload" for i in incidents.json())
+
+    import uuid
+
+    from api.app.models.public import StaffRole
+    from api.app.services.staff import create_staff, grant_workspace_access
+
+    clerk = f"rev_{uuid.uuid4().hex[:8]}"
+    reviewer = create_staff(clerk_user_id=clerk, email=f"{clerk}@vg.test", role=StaffRole.reviewer)
+    grant_workspace_access(staff_id=reviewer.id, workspace_id=new_workspace.id)
+    assert client.get(
+        f"/workspaces/{new_workspace.id}/csam-incidents", headers=auth_header(clerk)
+    ).status_code == 403
+
+
 def test_proof_of_removal_capture_on_removed(
     client: TestClient, new_workspace: Workspace, auth_header: Auth
 ) -> None:

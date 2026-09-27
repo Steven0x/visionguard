@@ -12,9 +12,11 @@ from sqlalchemy.orm import Session
 
 from api.app.audit.service import record_audit
 from api.app.config import get_settings
+from api.app.csam import ScanOutcome, scan_image
 from api.app.fingerprint.embedder import get_embedder
 from api.app.fingerprint.hashing import phash_hex, sha256_hex
 from api.app.images import InvalidImage, make_thumbnail, validate_and_load
+from api.app.models.csam import CsamSource
 from api.app.models.discovery import (
     CandidateKind,
     DiscoveryCandidate,
@@ -27,6 +29,7 @@ from api.app.models.subjects import Subject
 from api.app.net.fetcher import Fetcher, get_fetcher
 from api.app.net.ssrf import SsrfError
 from api.app.services.claim_support import subject_enforcement
+from api.app.services.csam_incidents import record_incident
 from api.app.services.scoring import apply_scoring
 from api.app.storage import get_storage
 from api.app.storage.keys import object_key
@@ -40,15 +43,6 @@ class DiscoveryNotAuthorized(Exception):
     """Raised when discovery is attempted for a subject without active authorization."""
 
 
-class CsamScannerRequired(Exception):
-    """Raised when found-image storage is attempted without a configured CSAM scanner."""
-
-
-def csam_scanning_ready() -> bool:
-    """Fail closed: storing images fetched from the open web (real 'safe' fetcher) is only
-    allowed once a CSAM scanner is configured. The fake fetcher (tests/CI) is exempt."""
-    settings = get_settings()
-    return settings.fetcher_backend == "fake" or settings.csam_scanner_enabled
 
 
 # ── URL canonicalization ──────────────────────────────────────────────────────
@@ -264,6 +258,7 @@ def _candidate_exists(session: Session, subject_id: int, source_key: str) -> boo
 def add_image_candidate(
     session: Session,
     *,
+    workspace_id: int,
     schema: str,
     subject_id: int,
     run_id: int,
@@ -286,14 +281,6 @@ def add_image_candidate(
     if _candidate_exists(session, subject_id, key):
         return None
 
-    # CSAM scan choke point (CLAUDE.md #7). This is the single place found imagery enters
-    # storage. Until a PhotoDNA-style scanner is wired here (hit → NCMEC path, never stored),
-    # storing images fetched from the open web is refused — enforced in code, not just docs.
-    if not csam_scanning_ready():
-        raise CsamScannerRequired(
-            "storing found images requires a configured CSAM scanner"
-        )
-
     fetcher = fetcher or get_fetcher()
     try:
         result = fetcher.fetch(canonical)
@@ -304,6 +291,18 @@ def add_image_candidate(
     try:
         image = validate_and_load(result.content)
     except InvalidImage:
+        return None
+
+    # CSAM scan choke point (CLAUDE.md #7): nothing is stored without a `clean` result. On a
+    # match, record a minimized incident (hash/URL/time only) for the admin escalation queue and
+    # store nothing; on a scan error, fail closed (store nothing).
+    outcome = scan_image(result.content)
+    if outcome is not ScanOutcome.clean:
+        if outcome is ScanOutcome.match:
+            record_incident(
+                session, workspace_id=workspace_id, source=CsamSource.discovery,
+                sha256=sha256_hex(result.content), url=canonical, subject_id=subject_id,
+            )
         return None
 
     thumbnail = make_thumbnail(image, get_settings().thumbnail_max_px)

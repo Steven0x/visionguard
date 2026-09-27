@@ -44,6 +44,7 @@ jobs:
       PROVIDER_BACKEND: fake
       CAPTURE_BACKEND: fake
       TSA_BACKEND: fake
+      CSAM_SCANNER_BACKEND: fake
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -5,13 +5,16 @@ Like the discovery tasks, these NEVER raise: a failure is recorded on the captur
 
 from __future__ import annotations
 
-from api.app.capture import capture_csam_ready, get_capture_backend
+from api.app.capture import get_capture_backend
+from api.app.csam import ScanOutcome, csam_scanner_configured, scan_image
 from api.app.db.base import schema_for_workspace
 from api.app.db.session import tenant_session
 from api.app.evidence_ts import get_timestamp
 from api.app.models.cases import Case
+from api.app.models.csam import CsamSource
 from api.app.models.evidence import CaptureStatus, EvidenceCapture, TimestampStatus
 from api.app.services import evidence as svc
+from api.app.services.csam_incidents import record_incident
 from api.app.services.evidence import _MANIFEST  # manifest artifact name
 from api.app.storage.evidence import get_evidence_storage
 from sqlalchemy import select
@@ -29,9 +32,9 @@ def capture_evidence(workspace_id: int, capture_id: int) -> str:
         case = session.get(Case, capture.case_id)
         if case is None:
             return "skipped"
-        # CSAM gate (CLAUDE.md #7): in prod without a scanner, refuse to store anything.
-        if not capture_csam_ready():
-            capture.status = CaptureStatus.failed
+        # No scanner wired → don't even run the browser; nothing could be stored (CLAUDE.md #7).
+        if not csam_scanner_configured():
+            capture.status = CaptureStatus.blocked
             capture.error = "CSAM scanner not configured; capture refused (fail-closed)"
             session.flush()
             return "blocked"
@@ -43,6 +46,19 @@ def capture_evidence(workspace_id: int, capture_id: int) -> str:
             return "failed"
         try:
             result = get_capture_backend().capture(url)
+            # CSAM scan choke point: nothing is sealed without a `clean` result.
+            outcome = scan_image(result.screenshot)
+            if outcome is not ScanOutcome.clean:
+                if outcome is ScanOutcome.match:
+                    record_incident(
+                        session, workspace_id=workspace_id, source=CsamSource.capture,
+                        sha256=svc._sha256(result.screenshot),
+                        url=result.final_url or url, case_id=capture.case_id,
+                    )
+                capture.status = CaptureStatus.blocked
+                capture.error = f"csam_{outcome}"
+                session.flush()
+                return "blocked"
             svc.seal_browser_capture(session, schema=schema, capture=capture, result=result)
         except Exception as exc:  # noqa: BLE001 - eager-safe; record on the row
             capture.status = CaptureStatus.failed

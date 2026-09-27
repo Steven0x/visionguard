@@ -681,7 +681,7 @@ export const assignCase = (
 export interface EvidenceCapture {
   id: number;
   kind: "auto" | "recapture" | "proof_of_removal" | "manual_upload";
-  status: "pending" | "sealed" | "failed";
+  status: "pending" | "sealed" | "failed" | "blocked";
   sensitive: boolean;
   requested_url: string | null;
   final_url: string | null;

@@ -33,6 +33,7 @@ class CaptureStatus(enum.StrEnum):
     pending = "pending"
     sealed = "sealed"
     failed = "failed"
+    blocked = "blocked"  # refused by the CSAM gate (no scanner, or a match/scan error)
 
 
 class TimestampStatus(enum.StrEnum):

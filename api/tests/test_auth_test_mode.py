@@ -25,5 +25,14 @@ def test_allows_test_mode_in_dev(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_production_without_test_mode_is_fine(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("AUTH_TEST_MODE", "0")
+    monkeypatch.setenv("CSAM_SCANNER_BACKEND", "none")  # a clean prod config (no fake scanner)
     settings = Settings()
     assert settings.is_production is True
+
+
+def test_refuses_fake_csam_scanner_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("AUTH_TEST_MODE", "0")
+    monkeypatch.setenv("CSAM_SCANNER_BACKEND", "fake")
+    with pytest.raises(ValidationError):
+        Settings()

@@ -5,6 +5,7 @@ All evidence is restricted-access (signed-URL only) and every access is custody-
 
 from __future__ import annotations
 
+import hashlib
 import io
 from datetime import datetime
 
@@ -14,14 +15,16 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.app.auth.deps import get_tenant_session, require_role, require_workspace_access
-from api.app.capture import capture_csam_ready
 from api.app.config import get_settings
+from api.app.csam import ScanOutcome, scan_image
 from api.app.images import InvalidImage, validate_and_load
 from api.app.models.cases import Case
-from api.app.models.evidence import CaptureKind, CustodyAction, EvidenceCapture
+from api.app.models.csam import CsamSource
+from api.app.models.evidence import CaptureKind, CaptureStatus, CustodyAction, EvidenceCapture
 from api.app.models.public import Staff, StaffRole, Workspace
 from api.app.services import cases as cases_svc
 from api.app.services import evidence as svc
+from api.app.services.csam_incidents import record_incident
 from api.app.storage.evidence import get_evidence_storage
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/cases/{case_id}", tags=["evidence"])
@@ -141,11 +144,6 @@ async def upload_evidence(
     session: Session = Depends(get_tenant_session),
 ) -> CaptureOut:
     case = _case_or_404(session, case_id)
-    if not capture_csam_ready():
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="CSAM scanner not configured; evidence upload refused (fail-closed)",
-        )
     data = await file.read()
     if len(data) > get_settings().asset_max_upload_bytes:
         raise HTTPException(
@@ -159,6 +157,7 @@ async def upload_evidence(
         ) from exc
     buf = io.BytesIO()
     image.convert("RGB").save(buf, "PNG")  # canonical, sanitized PNG
+    png = buf.getvalue()
 
     capture = svc.create_pending_capture(
         session, case=case, kind=CaptureKind.manual_upload,
@@ -167,9 +166,27 @@ async def upload_evidence(
     # Durably burn the capture id BEFORE writing any write-once object, so a later failure can't
     # orphan sealed objects under a key a reused id would then collide with.
     session.commit()
+
+    # CSAM scan choke point (CLAUDE.md #7): seal only on a `clean` result. A match → minimized
+    # incident + nothing sealed; a scan error (incl. no scanner) → fail closed, nothing sealed.
+    outcome = scan_image(png)
+    if outcome is not ScanOutcome.clean:
+        if outcome is ScanOutcome.match:
+            record_incident(
+                session, workspace_id=workspace.id, source=CsamSource.manual_upload,
+                sha256=hashlib.sha256(png).hexdigest(), url=case.source_url, case_id=case.id,
+            )
+        capture.status = CaptureStatus.blocked
+        capture.error = f"csam_{outcome}"
+        session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="upload refused: content flagged by the CSAM scan (fail-closed)",
+        )
+
     svc.seal_manual_upload(
         session, schema=workspace.schema_name, capture=capture,
-        screenshot_png=buf.getvalue(), attestation=note,
+        screenshot_png=png, attestation=note,
     )
     return CaptureOut.of(capture)
 

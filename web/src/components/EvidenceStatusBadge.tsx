@@ -4,6 +4,7 @@ const STATUS: Record<EvidenceCapture["status"], string> = {
   pending: "bg-blue-100 text-blue-700",
   sealed: "bg-green-100 text-green-700",
   failed: "bg-red-100 text-red-700",
+  blocked: "bg-red-100 text-red-700",
 };
 
 /** Pure: a capture's status + timestamp state (sealed-but-untimestamped is worth flagging). */

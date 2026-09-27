@@ -10,7 +10,12 @@ from worker.discovery import reverse_image_scan
 
 from api.app.config import get_settings
 from api.app.db.session import tenant_session
-from api.app.models.discovery import DiscoveryRun, DiscoverySettings, RunStatus
+from api.app.models.discovery import (
+    DiscoveryCandidate,
+    DiscoveryRun,
+    DiscoverySettings,
+    RunStatus,
+)
 from api.app.net.fetcher import FakeFetcher
 from api.app.providers.base import ProviderError
 from api.app.providers.serpapi import SerpApiLensProvider
@@ -18,25 +23,31 @@ from api.app.services import discovery as svc
 from api.tests.discohelpers import authorized_subject
 
 
-def test_add_image_candidate_refuses_without_csam_scanner(
+def test_add_image_candidate_stores_nothing_without_csam_scanner(
     db, new_workspace, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr(get_settings(), "fetcher_backend", "safe")
-    monkeypatch.setattr(get_settings(), "csam_scanner_enabled", False)
+    # No scanner configured → scan errors → fail closed: nothing stored.
+    monkeypatch.setattr(get_settings(), "csam_scanner_backend", "none")
     sid, _ = authorized_subject(new_workspace.schema_name)
-    with tenant_session(new_workspace.schema_name) as s, pytest.raises(svc.CsamScannerRequired):
-        svc.add_image_candidate(
-            s, schema=new_workspace.schema_name, subject_id=sid, run_id=1,
-            provider="x", query=None, source_url="https://found.example/a.png",
+    with tenant_session(new_workspace.schema_name) as s:
+        result = svc.add_image_candidate(
+            s, workspace_id=new_workspace.id, schema=new_workspace.schema_name, subject_id=sid,
+            run_id=1, provider="x", query=None, source_url="https://found.example/a.png",
             page_url=None, fetcher=FakeFetcher(),
         )
+        assert result is None
+        count = s.scalar(
+            select(func.count()).select_from(DiscoveryCandidate).where(
+                DiscoveryCandidate.subject_id == sid
+            )
+        )
+        assert count == 0
 
 
 def test_reverse_scan_blocks_without_csam_scanner(
     db, new_workspace, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr(get_settings(), "fetcher_backend", "safe")
-    monkeypatch.setattr(get_settings(), "csam_scanner_enabled", False)
+    monkeypatch.setattr(get_settings(), "csam_scanner_backend", "none")
     sid, aid = authorized_subject(new_workspace.schema_name, ready_asset=True)
     assert reverse_image_scan.run(new_workspace.id, sid, aid) == "blocked"
     with tenant_session(new_workspace.schema_name) as s:

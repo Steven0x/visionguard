@@ -16,7 +16,7 @@ from api.app.models.public import Staff, StaffRole, Workspace
 from api.app.services import assets as asset_service
 from api.app.services import keywords as keyword_service
 from api.app.services import subjects as subj_service
-from api.app.services.assets import AssetDeletionBlocked
+from api.app.services.assets import AssetDeletionBlocked, CsamBlocked
 from api.app.services.documents import signed_download_url
 from api.app.storage import get_storage
 from api.app.uploads import (
@@ -117,7 +117,7 @@ async def upload_asset(
             content_type=content_type,
             file_name=file.filename or "upload",
         )
-    except (UploadTooLarge, UnsupportedFileType, InvalidImage) as exc:
+    except (UploadTooLarge, UnsupportedFileType, InvalidImage, CsamBlocked) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc

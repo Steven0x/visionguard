@@ -9,6 +9,11 @@ from api.app.models.cases import (
     CaseNote,
     CaseStatus,
 )
+from api.app.models.csam import (
+    CsamIncident,
+    CsamIncidentStatus,
+    CsamSource,
+)
 from api.app.models.discovery import (
     CandidateKind,
     DiscoveryCandidate,
@@ -65,6 +70,9 @@ __all__ = [
     "CaseStatus",
     "CaptureKind",
     "CaptureStatus",
+    "CsamIncident",
+    "CsamIncidentStatus",
+    "CsamSource",
     "CustodyAction",
     "CustodyEvent",
     "DiscoveryCandidate",

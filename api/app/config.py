@@ -66,9 +66,11 @@ class Settings(BaseSettings):
     tineye_api_key: str = ""
     serpapi_cost_cents_per_call: int = 1
     tineye_cost_cents_per_call: int = 20
-    # Found-image thumbnails from the open web must pass a CSAM scan before storage (CLAUDE.md
-    # #7). Until a scanner is wired, storing images fetched by the REAL fetcher is refused.
-    csam_scanner_enabled: bool = False
+    # CSAM scanning gate (CLAUDE.md #7) — see api/app/csam.py. Every open-web/uploaded image
+    # must pass a `clean` scan before any bytes are stored/sealed. "none" (default) fails closed;
+    # "fake" is dev/test-only (refused otherwise below). csam_fake_result drives the fake.
+    csam_scanner_backend: str = "none"  # none | fake (real PhotoDNA/Safer added later)
+    csam_fake_result: str = "clean"  # clean | match | error (fake backend only)
 
     # Review & matching (Slice 5). Thresholds, weights and the leak/tube domain + risky-keyword
     # lists are config (env), never hard-coded, so ops can tune them without a deploy.
@@ -156,6 +158,20 @@ class Settings(BaseSettings):
         # Presigned document URLs must be short-lived; cap at 15 minutes.
         if not 0 < self.storage_signed_url_ttl_seconds <= 900:
             raise ValueError("STORAGE_SIGNED_URL_TTL_SECONDS must be between 1 and 900.")
+        # Fail loud on a misconfigured CSAM gate rather than silently degrading to fail-closed.
+        if self.csam_scanner_backend not in ("none", "fake"):
+            raise ValueError(
+                f"CSAM_SCANNER_BACKEND must be 'none' or 'fake' (got "
+                f"{self.csam_scanner_backend!r})."
+            )
+        if self.csam_fake_result not in ("clean", "match", "error"):
+            raise ValueError("CSAM_FAKE_RESULT must be 'clean', 'match', or 'error'.")
+        # The fake CSAM scanner must never run in production — it does not actually scan.
+        if self.csam_scanner_backend == "fake" and self.app_env not in _TEST_AUTH_ALLOWED_ENVS:
+            raise ValueError(
+                "CSAM_SCANNER_BACKEND=fake is only allowed when APP_ENV is 'dev' or 'test' "
+                f"(got APP_ENV={self.app_env!r}). Refusing to start."
+            )
         return self
 
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from api.app.csam import csam_scanner_configured
 from api.app.db.base import schema_for_workspace
 from api.app.db.session import public_session, tenant_session
 from api.app.models.assets import Asset, AssetStatus
@@ -78,7 +79,8 @@ def reverse_image_scan(workspace_id: int, subject_id: int, asset_id: int) -> str
             svc.finish_run(session, workspace_id=workspace_id, actor_staff_id=None, run=run,
                            status=RunStatus.blocked)
             return "blocked"
-        if not svc.csam_scanning_ready():
+        if not csam_scanner_configured():
+            # No scanner wired → don't spend provider budget; nothing could be stored anyway.
             svc.finish_run(session, workspace_id=workspace_id, actor_staff_id=None, run=run,
                            status=RunStatus.blocked)
             return "blocked"
@@ -107,8 +109,8 @@ def reverse_image_scan(workspace_id: int, subject_id: int, asset_id: int) -> str
         with tenant_session(schema) as session:
             for provider_name, result in collected:
                 if svc.add_image_candidate(
-                    session, schema=schema, subject_id=subject_id, run_id=run_id,
-                    provider=provider_name, query=None,
+                    session, workspace_id=workspace_id, schema=schema, subject_id=subject_id,
+                    run_id=run_id, provider=provider_name, query=None,
                     source_url=result.source_url, page_url=result.page_url,
                     title=result.title,
                 ) is not None:
