@@ -177,3 +177,40 @@ def test_duplicate_workspace_name_returns_409(
     assert dup.status_code == 409
     assert dup.headers.get("access-control-allow-origin") == _ORIGIN
     assert "already exists" in dup.json()["detail"]
+
+
+def test_duplicate_slug_race_maps_to_409(
+    client: TestClient, auth_header: Header, db: Fixtures, monkeypatch
+) -> None:
+    """If the pre-check misses a concurrent create (simulated), the unique-slug IntegrityError
+    is still translated to a 409, not a 500."""
+    import api.app.services.workspaces as wss
+
+    hdr = {**auth_header(db.admin_user_id), "Origin": _ORIGIN}
+    assert client.post("/workspaces", headers=hdr, json={"name": "Race Co"}).status_code == 201
+    # Force the pre-check to miss, so the DB unique constraint is the backstop.
+    monkeypatch.setattr(wss, "_slug_taken", lambda slug: False)
+    res = client.post("/workspaces", headers=hdr, json={"name": "Race Co"})
+    assert res.status_code == 409
+    assert res.headers.get("access-control-allow-origin") == _ORIGIN
+
+
+def test_provisioning_migrates_new_schema_to_head(
+    client: TestClient, auth_header: Header, db: Fixtures
+) -> None:
+    """A freshly provisioned workspace's schema is brought fully to head by upgrade_schema
+    (not just partially) — check a late-migration table exists and is tenant-isolated."""
+    from sqlalchemy import inspect
+
+    from api.app.db.base import schema_for_workspace
+    from api.app.db.session import get_engine
+
+    res = client.post(
+        "/workspaces", headers=auth_header(db.admin_user_id), json={"name": "Head Check"}
+    )
+    assert res.status_code == 201
+    schema = schema_for_workspace(res.json()["id"])
+    insp = inspect(get_engine())
+    tables = set(insp.get_table_names(schema=schema))
+    # csam_incidents (0013) + cases (0011) are among the latest tenant migrations.
+    assert {"csam_incidents", "cases", "evidence_captures", "audit_log"} <= tables

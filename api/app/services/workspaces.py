@@ -28,6 +28,11 @@ def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "workspace"
 
 
+def _slug_taken(slug: str) -> bool:
+    with public_session() as session:
+        return session.scalar(select(Workspace.id).where(Workspace.slug == slug)) is not None
+
+
 def create_workspace_with_access(
     *,
     name: str,
@@ -43,13 +48,10 @@ def create_workspace_with_access(
     suffixing. The pre-check is friendly; the unique constraint is the race backstop.
     """
     resolved_slug = slugify(slug or name)
-    with public_session() as session:
-        if session.scalar(
-            select(Workspace.id).where(Workspace.slug == resolved_slug)
-        ) is not None:
-            raise DuplicateWorkspace(
-                f"a workspace named '{name}' (slug '{resolved_slug}') already exists"
-            )
+    if _slug_taken(resolved_slug):
+        raise DuplicateWorkspace(
+            f"a workspace named '{name}' (slug '{resolved_slug}') already exists"
+        )
     try:
         workspace = create_workspace(
             name=name,

@@ -94,7 +94,10 @@ All under `/workspaces`. `401` unauth, `403` role/access failure, `404` missing.
 | POST | `/workspaces/{id}/subjects/import/preview` | admin/reviewer + access | multipart; validates only, no writes |
 | POST | `/workspaces/{id}/subjects/import/commit` | admin/reviewer + access | multipart; all-or-nothing; audit `subjects.imported` |
 
-Slug is auto-derived from the name (unique) when not supplied; it is immutable after create.
+Slug is auto-derived from the name when not supplied and is immutable after create. A create
+whose derived (or supplied) slug already exists is rejected with **409 Conflict** (not silently
+suffixed), so a duplicate workspace name surfaces clearly. `plan` must be one of the valid plans
+(`starter`, `pro`, `enterprise`) or the create is 422.
 
 ## CSV import
 

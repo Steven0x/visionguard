@@ -53,10 +53,22 @@ def create_workspace(
     lock_conn = get_engine().connect()
     try:
         lock_conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _PROVISION_LOCK_KEY})
-        lock_conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
-        lock_conn.commit()
-        # Migrate ONLY this new tenant schema (public is already at head).
-        upgrade_schema(schema)
+        try:
+            lock_conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+            lock_conn.commit()
+            # Migrate ONLY this new tenant schema (public is already at head).
+            upgrade_schema(schema)
+        except Exception:
+            # Provisioning is atomic: if schema creation/migration fails after the workspace row
+            # was committed, undo BOTH — drop the partial schema and delete the row — so the name
+            # is free to retry (otherwise the duplicate-slug 409 would block it forever).
+            lock_conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+            lock_conn.commit()
+            with public_session() as cleanup:
+                orphan = cleanup.get(Workspace, workspace_id)
+                if orphan is not None:
+                    cleanup.delete(orphan)
+            raise
     finally:
         lock_conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _PROVISION_LOCK_KEY})
         lock_conn.commit()
