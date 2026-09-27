@@ -115,3 +115,53 @@ def test_reviewer_can_view_but_not_mutate_allowlist(
     hdr = auth_header(db.reviewer_a_user_id)
     assert client.get(base, headers=hdr).status_code == 200
     assert client.post(base, headers=hdr, json={"kind": "domain", "value": "z"}).status_code == 403
+
+
+# ── Error handling / validation (fix branch) ──────────────────────────────────
+
+_ORIGIN = "http://localhost:5173"  # matches ALLOWED_ORIGINS so CORS headers apply
+
+
+def test_unhandled_error_returns_cors_headers_and_json(
+    client: TestClient, auth_header: Header, db: Fixtures, monkeypatch
+) -> None:
+    """A 500 must still carry CORS headers + a JSON body, so the UI shows the real error
+    instead of an opaque 'Failed to fetch'."""
+    import api.app.routers.workspaces as wsr
+
+    def _boom(**kwargs):
+        raise RuntimeError("provisioning exploded")
+
+    monkeypatch.setattr(wsr.ws_service, "create_workspace_with_access", _boom)
+    res = client.post(
+        "/workspaces",
+        headers={**auth_header(db.admin_user_id), "Origin": _ORIGIN},
+        json={"name": "Boom Agency", "plan": "starter"},
+    )
+    assert res.status_code == 500
+    assert res.headers.get("access-control-allow-origin") == _ORIGIN
+    assert res.json()["detail"]  # a readable body, not a dropped connection
+
+
+def test_invalid_plan_is_rejected_inline(
+    client: TestClient, auth_header: Header, db: Fixtures
+) -> None:
+    res = client.post(
+        "/workspaces",
+        headers={**auth_header(db.admin_user_id), "Origin": _ORIGIN},
+        json={"name": "RealTime Testers", "plan": "first"},  # "first" is not a valid plan
+    )
+    assert res.status_code == 422
+    assert res.headers.get("access-control-allow-origin") == _ORIGIN
+    assert "plan" in res.text.lower()
+
+
+def test_blank_name_is_rejected(
+    client: TestClient, auth_header: Header, db: Fixtures
+) -> None:
+    res = client.post(
+        "/workspaces",
+        headers=auth_header(db.admin_user_id),
+        json={"name": "", "plan": "starter"},
+    )
+    assert res.status_code == 422

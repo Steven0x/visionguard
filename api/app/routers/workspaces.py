@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -17,6 +19,16 @@ from api.app.models.audit import AuditLog
 from api.app.models.public import Staff, StaffRole, Workspace
 from api.app.models.subjects import AllowlistEntry, AllowlistKind
 from api.app.services import workspaces as ws_service
+from api.app.services.workspaces import WORKSPACE_PLANS
+
+
+def _valid_plan(value: str) -> str:
+    if value not in WORKSPACE_PLANS:
+        raise ValueError(f"plan must be one of: {', '.join(WORKSPACE_PLANS)}")
+    return value
+
+
+Plan = Annotated[str, AfterValidator(_valid_plan)]
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
@@ -28,8 +40,8 @@ _STAFF = require_role(StaffRole.admin, StaffRole.reviewer)
 
 
 class WorkspaceCreate(BaseModel):
-    name: str
-    plan: str = "starter"
+    name: str = Field(min_length=1, max_length=200)
+    plan: Plan = "starter"
     slug: str | None = None
     contact_name: str | None = None
     contact_email: str | None = None
@@ -37,7 +49,7 @@ class WorkspaceCreate(BaseModel):
 
 class WorkspaceUpdate(BaseModel):
     name: str | None = None
-    plan: str | None = None
+    plan: Plan | None = None
     contact_name: str | None = None
     contact_email: str | None = None
 

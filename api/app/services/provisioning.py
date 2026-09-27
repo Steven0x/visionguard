@@ -13,6 +13,12 @@ from api.app.db.migrate import upgrade_all
 from api.app.db.session import get_engine, public_session
 from api.app.models.public import Workspace
 
+# Serializes provisioning across concurrent creates. upgrade_all() migrates EVERY tenant schema
+# and is not safe to run concurrently — two simultaneous creates would each migrate the other's
+# freshly-created schema and collide (DuplicateTable). A session-level Postgres advisory lock
+# held across schema creation + migration makes provisioning sequential. Arbitrary fixed key.
+_PROVISION_LOCK_KEY = 0x76_67_70_72  # "vgpr"
+
 
 def create_workspace(
     *,
@@ -41,9 +47,18 @@ def create_workspace(
     # Derive + validate the schema name from the trusted id, then create it. The name is
     # interpolated only after passing ^ws_[a-z0-9_]+$, so it cannot carry injected SQL.
     schema = schema_for_workspace(workspace_id)
-    with get_engine().begin() as conn:
-        conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
-
-    # Apply tenant migrations (loops all schemas; only the new one has work to do).
-    upgrade_all()
+    # Hold a session-level advisory lock across CREATE SCHEMA + upgrade_all so concurrent
+    # provisions serialize (see _PROVISION_LOCK_KEY). The lock survives commits and is released
+    # explicitly / on connection close.
+    lock_conn = get_engine().connect()
+    try:
+        lock_conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _PROVISION_LOCK_KEY})
+        lock_conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+        lock_conn.commit()
+        # Apply tenant migrations (loops all schemas; only the new one has work to do).
+        upgrade_all()
+    finally:
+        lock_conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _PROVISION_LOCK_KEY})
+        lock_conn.commit()
+        lock_conn.close()
     return workspace

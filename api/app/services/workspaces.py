@@ -15,6 +15,9 @@ from api.app.models.subjects import AllowlistEntry, AllowlistKind
 from api.app.services.provisioning import create_workspace
 from api.app.services.staff import grant_workspace_access
 
+# Valid workspace plans (kept in sync with the frontend dropdown in web/src/components).
+WORKSPACE_PLANS: tuple[str, ...] = ("starter", "pro", "enterprise")
+
 
 def slugify_unique(name: str) -> str:
     base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "workspace"

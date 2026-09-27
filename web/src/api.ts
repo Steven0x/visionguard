@@ -82,10 +82,23 @@ async function request<T>(
     } catch {
       /* ignore */
     }
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new Error(formatDetail(detail));
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/** Turn a FastAPI error `detail` (string, or a 422 array of {msg,loc}) into a readable line. */
+function formatDetail(detail: unknown): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d) =>
+        d && typeof d === "object" && "msg" in d ? String((d as { msg: unknown }).msg) : String(d),
+      )
+      .join("; ");
+  }
+  return JSON.stringify(detail);
 }
 
 export const fetchMe = (token: string) => request<Me>(token, "/me");

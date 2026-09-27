@@ -23,3 +23,6 @@ web/dist/
 
 # OS / editors
 .DS_Store
+
+# Celery beat local schedule
+celerybeat-schedule*
