@@ -26,12 +26,56 @@ os.environ.update(
         "CSAM_SCANNER_BACKEND": "fake",  # dev/test-only scanner
     }
 )
-# These may be overridden by an explicit env (e.g. a dedicated test DB); default to local docker.
 os.environ.setdefault("CSAM_FAKE_RESULT", "clean")  # individual tests flip this at runtime
-os.environ.setdefault(
-    "DATABASE_URL",
-    "postgresql+psycopg://visionguard:visionguard@localhost:5433/visionguard",
-)
+
+# ── Dedicated TEST database — the suite must NEVER touch the dev database ──────
+# We derive a "<name>_test" database from whatever DATABASE_URL is configured (so `make test`,
+# which exports the dev .env, still targets visionguard_test, not visionguard), refuse to run if
+# the target isn't a *_test database, and auto-create it on the same Postgres server.
+from sqlalchemy import create_engine as _create_engine  # noqa: E402
+from sqlalchemy import text as _text  # noqa: E402
+from sqlalchemy.engine import make_url as _make_url  # noqa: E402
+
+_DEFAULT_DB_URL = "postgresql+psycopg://visionguard:visionguard@localhost:5433/visionguard"
+
+
+def _derive_test_url(raw: str) -> str:
+    url = _make_url(raw)
+    name = url.database or ""
+    if not name.endswith("_test"):
+        name = f"{name}_test"
+    return url.set(database=name).render_as_string(hide_password=False)
+
+
+_TEST_DB_URL = _derive_test_url(os.environ.get("DATABASE_URL", _DEFAULT_DB_URL))
+_TEST_DB_NAME = _make_url(_TEST_DB_URL).database or ""
+# Refuse to run against the dev db name or anything not clearly a test database.
+if _TEST_DB_NAME in {"visionguard", ""} or not _TEST_DB_NAME.endswith("_test"):
+    raise RuntimeError(
+        f"refusing to run the test suite against non-test database {_TEST_DB_NAME!r}; "
+        "the test database name must end in '_test'"
+    )
+if not _TEST_DB_NAME.replace("_", "").isalnum():  # guard the CREATE DATABASE interpolation
+    raise RuntimeError(f"unsafe test database name {_TEST_DB_NAME!r}")
+os.environ["DATABASE_URL"] = _TEST_DB_URL
+
+
+def _ensure_test_database() -> None:
+    """Create the *_test database if it doesn't exist (connect via the 'postgres' maint db)."""
+    url = _make_url(_TEST_DB_URL)
+    admin = _create_engine(url.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            found = conn.execute(
+                _text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": url.database}
+            ).scalar()
+            if not found:
+                conn.execute(_text(f'CREATE DATABASE "{url.database}"'))
+    finally:
+        admin.dispose()
+
+
+_ensure_test_database()
 
 from collections.abc import Callable, Iterator  # noqa: E402
 from dataclasses import dataclass  # noqa: E402

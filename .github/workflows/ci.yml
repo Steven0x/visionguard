@@ -33,7 +33,9 @@ jobs:
     env:
       APP_ENV: test
       AUTH_TEST_MODE: "1"
-      DATABASE_URL: postgresql+psycopg://visionguard:visionguard@localhost:5432/visionguard
+      # Tests run against a dedicated *_test database (conftest auto-creates it); the suite
+      # refuses to run against a non-*_test database.
+      DATABASE_URL: postgresql+psycopg://visionguard:visionguard@localhost:5432/visionguard_test
       REDIS_URL: redis://localhost:6379/0
       ALLOWED_ORIGINS: http://localhost:5173
       # In-memory storage + fake embedder/fetcher/providers → CI needs no MinIO, no torch,
