@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -19,7 +19,7 @@ from api.app.models.audit import AuditLog
 from api.app.models.public import Staff, StaffRole, Workspace
 from api.app.models.subjects import AllowlistEntry, AllowlistKind
 from api.app.services import workspaces as ws_service
-from api.app.services.workspaces import WORKSPACE_PLANS
+from api.app.services.workspaces import WORKSPACE_PLANS, DuplicateWorkspace
 
 
 def _valid_plan(value: str) -> str:
@@ -92,14 +92,17 @@ def create_workspace(
     payload: WorkspaceCreate,
     staff: Staff = Depends(_ADMIN),
 ) -> Workspace:
-    return ws_service.create_workspace_with_access(
-        name=payload.name,
-        creator_staff_id=staff.id,
-        plan=payload.plan,
-        slug=payload.slug,
-        contact_name=payload.contact_name,
-        contact_email=payload.contact_email,
-    )
+    try:
+        return ws_service.create_workspace_with_access(
+            name=payload.name,
+            creator_staff_id=staff.id,
+            plan=payload.plan,
+            slug=payload.slug,
+            contact_name=payload.contact_name,
+            contact_email=payload.contact_email,
+        )
+    except DuplicateWorkspace as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.get("", response_model=list[WorkspaceOut])

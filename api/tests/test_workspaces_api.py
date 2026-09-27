@@ -165,3 +165,15 @@ def test_blank_name_is_rejected(
         json={"name": "", "plan": "starter"},
     )
     assert res.status_code == 422
+
+
+def test_duplicate_workspace_name_returns_409(
+    client: TestClient, auth_header: Header, db: Fixtures
+) -> None:
+    hdr = {**auth_header(db.admin_user_id), "Origin": _ORIGIN}
+    first = client.post("/workspaces", headers=hdr, json={"name": "Dup Co", "plan": "starter"})
+    assert first.status_code == 201
+    dup = client.post("/workspaces", headers=hdr, json={"name": "Dup Co", "plan": "starter"})
+    assert dup.status_code == 409
+    assert dup.headers.get("access-control-allow-origin") == _ORIGIN
+    assert "already exists" in dup.json()["detail"]

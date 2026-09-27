@@ -8,6 +8,8 @@ only touch tables that belong to it. Per-schema ``alembic_version`` tables (via
 
 from __future__ import annotations
 
+import os
+
 # Ensure all model metadata is registered on the bases.
 import api.app.models  # noqa: F401
 from alembic import context
@@ -17,12 +19,17 @@ from api.app.db.base import (
     PublicBase,
     TenantBase,
     schema_for_workspace,
+    validate_schema_name,
 )
 from api.app.db.migration_scope import set_current
 from api.app.db.session import get_engine
 from sqlalchemy import Connection, Engine, MetaData, inspect, text
 
 config = context.config
+
+# When set (by provisioning), migrate ONLY this one tenant schema — the public schema is already
+# at head, and re-migrating every tenant on each create is wasteful and widens the blast radius.
+_ONLY_SCHEMA_ENV = "VG_MIGRATE_ONLY_SCHEMA"
 
 
 def _list_tenant_schemas(connection: Connection) -> list[str]:
@@ -59,6 +66,13 @@ def _run_for_scope(
 def run_migrations_online() -> None:
     config.set_main_option("sqlalchemy.url", get_settings().database_url)
     engine = get_engine()
+
+    only = os.environ.get(_ONLY_SCHEMA_ENV)
+    if only:
+        # Provisioning path: just the new tenant schema (public already migrated).
+        _run_for_scope(engine, "tenant", validate_schema_name(only), TenantBase.metadata)
+        return
+
     # Public/shared tables first, so the tenant enumeration can read public.workspaces.
     _run_for_scope(engine, "public", "public", PublicBase.metadata)
     with engine.connect() as connection:

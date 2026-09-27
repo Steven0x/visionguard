@@ -40,6 +40,7 @@ export function WorkspaceDetail({
   const [showArchived, setShowArchived] = useState(false);
   const [openSubject, setOpenSubject] = useState<Subject | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [addingSubject, setAddingSubject] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -59,6 +60,7 @@ export function WorkspaceDetail({
 
   const onAddSubject = async (form: FormData) => {
     setError(null);
+    setAddingSubject(true);
     try {
       await createSubject(await getToken(), workspaceId, {
         legal_name: String(form.get("legal_name") ?? ""),
@@ -69,7 +71,9 @@ export function WorkspaceDetail({
       });
       await reload();
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAddingSubject(false);
     }
   };
 
@@ -172,8 +176,9 @@ export function WorkspaceDetail({
           className="flex flex-wrap items-end gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            void onAddSubject(new FormData(e.currentTarget));
+            const form = new FormData(e.currentTarget);
             e.currentTarget.reset();
+            void onAddSubject(form);
           }}
         >
           <input name="legal_name" required placeholder="Legal name" className="border p-1" />
@@ -181,7 +186,12 @@ export function WorkspaceDetail({
           <input name="handles" placeholder="Handles (comma)" className="border p-1" />
           <input name="residence_state" placeholder="ST" maxLength={2} className="w-14 border p-1" />
           <input name="notes" placeholder="Notes" className="border p-1" />
-          <button className="rounded bg-blue-700 px-2 py-1 text-white">Add subject</button>
+          <button
+            className="rounded bg-blue-700 px-2 py-1 text-white disabled:opacity-50"
+            disabled={addingSubject}
+          >
+            {addingSubject ? "Adding…" : "Add subject"}
+          </button>
         </form>
       </section>
 

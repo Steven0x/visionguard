@@ -9,7 +9,7 @@ from __future__ import annotations
 from sqlalchemy import text
 
 from api.app.db.base import schema_for_workspace
-from api.app.db.migrate import upgrade_all
+from api.app.db.migrate import upgrade_schema
 from api.app.db.session import get_engine, public_session
 from api.app.models.public import Workspace
 
@@ -55,8 +55,8 @@ def create_workspace(
         lock_conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _PROVISION_LOCK_KEY})
         lock_conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
         lock_conn.commit()
-        # Apply tenant migrations (loops all schemas; only the new one has work to do).
-        upgrade_all()
+        # Migrate ONLY this new tenant schema (public is already at head).
+        upgrade_schema(schema)
     finally:
         lock_conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _PROVISION_LOCK_KEY})
         lock_conn.commit()

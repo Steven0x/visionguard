@@ -103,6 +103,7 @@ export function ReviewInbox({
   const [bulkDomain, setBulkDomain] = useState("");
   const [bulkReason, setBulkReason] = useState<DismissReason>("not_a_match");
   const [bulkPreview, setBulkPreview] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const reload = useCallback(async () => {
@@ -129,12 +130,16 @@ export function ReviewInbox({
   const reasonFor = (it: InboxItem) => reasonByItem[it.id] ?? "not_a_match";
 
   const act = async (fn: () => Promise<unknown>) => {
+    if (busy) return;
     setError(null);
+    setBusy(true);
     try {
       await fn();
       await reload();
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -319,7 +324,7 @@ export function ReviewInbox({
               <div className="flex gap-1">
                 <button
                   className="flex-1 rounded bg-green-700 px-2 py-1 text-white disabled:opacity-40"
-                  disabled={it.supported_claims.length === 0}
+                  disabled={it.supported_claims.length === 0 || busy}
                   onClick={() => void doConfirm(it)}
                 >
                   Confirm
@@ -338,7 +343,8 @@ export function ReviewInbox({
                   ))}
                 </select>
                 <button
-                  className="rounded bg-gray-700 px-2 py-1 text-white"
+                  className="rounded bg-gray-700 px-2 py-1 text-white disabled:opacity-40"
+                  disabled={busy}
                   onClick={() => void doDismiss(it)}
                 >
                   Dismiss

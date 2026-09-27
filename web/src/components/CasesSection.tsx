@@ -168,12 +168,13 @@ function CaseDetailView({
   const getToken = useToken();
   const [detail, setDetail] = useState<CaseDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async () => {
     try {
       setDetail(await getCaseDetail(await getToken(), workspaceId, caseId));
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e.message : String(e));
     }
   }, [getToken, workspaceId, caseId]);
 
@@ -182,12 +183,16 @@ function CaseDetailView({
   }, [reload]);
 
   const act = async (fn: () => Promise<unknown>) => {
+    if (busy) return;
     setError(null);
+    setBusy(true);
     try {
       await fn();
       await reload();
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -237,7 +242,8 @@ function CaseDetailView({
         {detail.allowed_transitions.map((to) => (
           <button
             key={to}
-            className="rounded bg-gray-800 px-2 py-1 text-sm text-white"
+            className="rounded bg-gray-800 px-2 py-1 text-sm text-white disabled:opacity-40"
+            disabled={busy}
             onClick={() => {
               if (NOTE_REQUIRED.includes(to)) {
                 const note = window.prompt(`Note for moving to ${to} (required):`) ?? "";

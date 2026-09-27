@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from api.app.audit.service import record_audit
@@ -19,18 +20,12 @@ from api.app.services.staff import grant_workspace_access
 WORKSPACE_PLANS: tuple[str, ...] = ("starter", "pro", "enterprise")
 
 
-def slugify_unique(name: str) -> str:
-    base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "workspace"
-    with public_session() as session:
-        candidate = base
-        n = 2
-        while (
-            session.scalar(select(Workspace.id).where(Workspace.slug == candidate))
-            is not None
-        ):
-            candidate = f"{base}-{n}"
-            n += 1
-        return candidate
+class DuplicateWorkspace(Exception):
+    """Raised when a workspace with the same slug already exists (→ 409)."""
+
+
+def slugify(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "workspace"
 
 
 def create_workspace_with_access(
@@ -42,15 +37,31 @@ def create_workspace_with_access(
     contact_name: str | None = None,
     contact_email: str | None = None,
 ) -> Workspace:
-    """Provision a workspace, grant the creator access, and audit `workspace.created`."""
-    resolved_slug = slugify_unique(slug or name)
-    workspace = create_workspace(
-        name=name,
-        slug=resolved_slug,
-        plan=plan,
-        contact_name=contact_name,
-        contact_email=contact_email,
-    )
+    """Provision a workspace, grant the creator access, and audit `workspace.created`.
+
+    Rejects a duplicate name/slug with DuplicateWorkspace (→ 409) rather than silently
+    suffixing. The pre-check is friendly; the unique constraint is the race backstop.
+    """
+    resolved_slug = slugify(slug or name)
+    with public_session() as session:
+        if session.scalar(
+            select(Workspace.id).where(Workspace.slug == resolved_slug)
+        ) is not None:
+            raise DuplicateWorkspace(
+                f"a workspace named '{name}' (slug '{resolved_slug}') already exists"
+            )
+    try:
+        workspace = create_workspace(
+            name=name,
+            slug=resolved_slug,
+            plan=plan,
+            contact_name=contact_name,
+            contact_email=contact_email,
+        )
+    except IntegrityError as exc:  # concurrent create won the slug between check and insert
+        raise DuplicateWorkspace(
+            f"a workspace named '{name}' (slug '{resolved_slug}') already exists"
+        ) from exc
     grant_workspace_access(staff_id=creator_staff_id, workspace_id=workspace.id)
     with tenant_session(workspace.schema_name) as session:
         record_audit(

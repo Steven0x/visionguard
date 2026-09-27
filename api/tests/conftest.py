@@ -9,22 +9,25 @@ from __future__ import annotations
 
 import os
 
-# Must be set before any app module reads settings.
-os.environ.setdefault("APP_ENV", "test")
-os.environ.setdefault("AUTH_TEST_MODE", "1")
-# Use the deterministic fake embedder so tests never import torch or download weights.
-os.environ.setdefault("EMBEDDER_BACKEND", "fake")
-# Use in-memory object storage so tests/CI need no MinIO/R2 container.
-os.environ.setdefault("STORAGE_BACKEND", "fake")
-# Use fake discovery fetcher + providers so tests never hit the network.
-os.environ.setdefault("FETCHER_BACKEND", "fake")
-os.environ.setdefault("PROVIDER_BACKEND", "fake")
-# Use the fake evidence capture + timestamper so tests need no browser/TSA/network.
-os.environ.setdefault("CAPTURE_BACKEND", "fake")
-os.environ.setdefault("TSA_BACKEND", "fake")
-# Fake CSAM scanner (dev/test-only), default "clean"; individual tests flip CSAM_FAKE_RESULT.
-os.environ.setdefault("CSAM_SCANNER_BACKEND", "fake")
-os.environ.setdefault("CSAM_FAKE_RESULT", "clean")
+# The suite must be HERMETIC: `make test` does `include .env; export`, so a developer's dev/demo
+# .env (e.g. AUTH_TEST_MODE=0, APP_ENV=dev, STORAGE_BACKEND=s3 for the local Clerk demo) would
+# otherwise leak in and break the suite. Force the test-critical values (override any inherited
+# env) BEFORE any app module reads settings. CI sets the same fake values, so this is a no-op there.
+os.environ.update(
+    {
+        "APP_ENV": "test",
+        "AUTH_TEST_MODE": "1",
+        "EMBEDDER_BACKEND": "fake",  # no torch / weight downloads
+        "STORAGE_BACKEND": "fake",  # in-memory; no MinIO/R2
+        "FETCHER_BACKEND": "fake",  # no network
+        "PROVIDER_BACKEND": "fake",
+        "CAPTURE_BACKEND": "fake",  # no browser
+        "TSA_BACKEND": "fake",  # no TSA/network
+        "CSAM_SCANNER_BACKEND": "fake",  # dev/test-only scanner
+    }
+)
+# These may be overridden by an explicit env (e.g. a dedicated test DB); default to local docker.
+os.environ.setdefault("CSAM_FAKE_RESULT", "clean")  # individual tests flip this at runtime
 os.environ.setdefault(
     "DATABASE_URL",
     "postgresql+psycopg://visionguard:visionguard@localhost:5433/visionguard",
