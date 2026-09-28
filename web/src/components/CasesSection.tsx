@@ -16,6 +16,7 @@ import {
 import { useToken } from "../useToken";
 import { CaseStatusBadge } from "./CaseStatusBadge";
 import { EvidenceSection } from "./EvidenceSection";
+import { NoticeSection } from "./NoticeSection";
 
 const CLAIM_TYPES = ["copyright", "likeness", "ncii", "impersonation", "trademark"];
 const NOTE_REQUIRED: CaseStatus[] = ["withdrawn"];
@@ -286,6 +287,8 @@ function CaseDetailView({
       />
 
       <EvidenceSection workspaceId={workspaceId} caseId={caseId} isAdmin={isAdmin} />
+
+      <NoticeSection workspaceId={workspaceId} caseId={caseId} />
 
       {/* Timeline */}
       <div>

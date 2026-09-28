@@ -149,10 +149,10 @@ def score_candidate(session: Session, candidate: DiscoveryCandidate) -> ScoreOut
 # ── Allowlist ─────────────────────────────────────────────────────────────────
 
 
-def is_allowlisted(session: Session, candidate: DiscoveryCandidate) -> bool:
-    """True if the candidate's source/page URL matches any workspace allowlist entry."""
-    urls = [u.lower() for u in (candidate.source_url, candidate.page_url) if u]
-    hosts = {_host(candidate.source_url), _host(candidate.page_url)} - {""}
+def urls_allowlisted(session: Session, *raw_urls: str | None) -> bool:
+    """True if any of the given URLs matches a workspace allowlist entry (domain/url/handle)."""
+    urls = [u.lower() for u in raw_urls if u]
+    hosts = {_host(u) for u in raw_urls} - {""}
     for entry in session.scalars(select(AllowlistEntry)).all():
         value = entry.value.strip().lower()
         if not value:
@@ -168,6 +168,11 @@ def is_allowlisted(session: Session, candidate: DiscoveryCandidate) -> bool:
             if needle and any(needle in u for u in urls):
                 return True
     return False
+
+
+def is_allowlisted(session: Session, candidate: DiscoveryCandidate) -> bool:
+    """True if the candidate's source/page URL matches any workspace allowlist entry."""
+    return urls_allowlisted(session, candidate.source_url, candidate.page_url)
 
 
 # ── Persisting scoring + allowlist routing ────────────────────────────────────

@@ -233,6 +233,39 @@ def seal_manual_upload(
           manifest_meta=_manifest_meta(capture))
 
 
+def seal_notice_capture(
+    session: Session,
+    *,
+    schema: str,
+    capture: EvidenceCapture,
+    notice_text: str,
+    recipients: list[str],
+    headers: dict[str, str],
+    claim_type: str,
+    template_id: int,
+    template_version: int,
+) -> None:
+    """Seal the exact sent notice (rendered text + recipients + headers), write-once, so the
+    filing record is immutable (CLAUDE.md #6). Mirrors seal_manual_upload."""
+    meta = _build_meta(
+        capture,
+        extra={
+            "notice": True,
+            "claim_type": claim_type,
+            "template_id": template_id,
+            "template_version": template_version,
+            "recipients": recipients,
+            "headers": headers,
+        },
+    )
+    artifacts = {
+        "notice.txt": (notice_text.encode("utf-8"), "text/plain"),
+        "meta.json": (json.dumps(meta, indent=2, sort_keys=True).encode(), "application/json"),
+    }
+    _seal(session, schema=schema, capture=capture, artifacts=artifacts,
+          manifest_meta=_manifest_meta(capture))
+
+
 def _manifest_meta(capture: EvidenceCapture) -> dict:
     return {
         "case_id": capture.case_id,
@@ -352,11 +385,28 @@ def has_fresh_sealed_capture(session: Session, case_id: int) -> bool:
             .where(
                 EvidenceCapture.case_id == case_id,
                 EvidenceCapture.status == CaptureStatus.sealed,
+                # A sealed NOTICE is not page evidence — it must never satisfy the evidence gate.
+                EvidenceCapture.kind != CaptureKind.notice,
                 EvidenceCapture.capture_finished_at >= cutoff,
             )
             .limit(1)
         )
         is not None
+    )
+
+
+def latest_sealed_page_capture(session: Session, case_id: int) -> EvidenceCapture | None:
+    """The newest sealed page-evidence capture (excludes sealed notices), for referencing its
+    manifest hash + capture time in a notice."""
+    return session.scalar(
+        select(EvidenceCapture)
+        .where(
+            EvidenceCapture.case_id == case_id,
+            EvidenceCapture.status == CaptureStatus.sealed,
+            EvidenceCapture.kind != CaptureKind.notice,
+        )
+        .order_by(EvidenceCapture.capture_finished_at.desc(), EvidenceCapture.id.desc())
+        .limit(1)
     )
 
 
