@@ -98,3 +98,48 @@ def test_fetch_success_returns_content() -> None:
     result = fetcher.fetch("http://8.8.8.8/ok.png")
     assert result.content_type == "image/png"
     assert result.content == b"\x89PNG"
+
+
+# ── Slice 9: the status-only probe (SSRF-safe, never downloads the body) ──────────
+
+
+def test_probe_returns_status_without_content_type_restriction() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["host"] == "8.8.8.8"
+        # A take-down page: a 404 with an HTML body. fetch() would accept text/html; probe just
+        # reports the status.
+        return httpx.Response(404, headers={"Content-Type": "text/html"}, content=b"<h1>gone</h1>")
+
+    result = SafeFetcher(transport=httpx.MockTransport(handler)).probe("http://8.8.8.8/p")
+    assert result.http_status == 404 and result.reachable is True
+
+
+def test_probe_does_not_download_the_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Cap the body at 1 byte: fetch() enforces the size cap (would raise), but probe never reads
+    # the body, so an oversize response still probes fine.
+    from api.app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "fetcher_max_bytes", 1)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"Content-Type": "image/png"}, content=b"x" * 4096)
+
+    result = SafeFetcher(transport=httpx.MockTransport(handler)).probe("http://8.8.8.8/big.png")
+    assert result.http_status == 200 and result.reachable is True
+
+
+def test_probe_blocks_redirect_to_private() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(302, headers={"Location": "http://127.0.0.1/secret"})
+
+    with pytest.raises(SsrfError):
+        SafeFetcher(transport=httpx.MockTransport(handler)).probe("http://93.184.216.34/")
+
+
+def test_probe_reports_connection_refused_as_unreachable() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    result = SafeFetcher(transport=httpx.MockTransport(handler)).probe("http://8.8.8.8/p")
+    assert result.reachable is False and result.http_status is None
+    assert (result.error_kind or "").startswith("connect")

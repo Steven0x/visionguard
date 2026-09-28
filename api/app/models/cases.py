@@ -81,6 +81,24 @@ class Case(TenantBase):
     assigned_staff_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Follow-up timer for the current state (cleared on terminal states).
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Re-check proposals (Slice 9), set by the beat and cleared on human confirm/dismiss. A Filed
+    # case can get a removal proposal; a Monitoring case a reappearance proposal. Nothing
+    # transitions on these — a human confirms.
+    removal_proposed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reappearance_proposed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # When a removal proposal was last dismissed (suppresses immediate re-proposal, Slice 9).
+    removal_dismissed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Set when a removed→monitoring case's rechecks are all `live` (removal never recheck-verified):
+    # a human must confirm-close or reopen; it is never auto-closed (Slice 9).
+    removal_unverified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

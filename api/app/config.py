@@ -92,6 +92,11 @@ class Settings(BaseSettings):
     # A transition sets due_at = now + days[new_state]; terminal states clear it.
     case_due_days: str = "confirmed:2,filed:3,removed:1,countered:5,escalated:7,monitoring:14"
 
+    # Outcomes & re-upload watch (Slice 9). A removal is proposed only when two consecutive
+    # `gone` rechecks are at least this many hours apart (a single 404 can be a geo-block / login
+    # wall / rate limit). The monitoring watch window reuses case_due_days["monitoring"].
+    recheck_min_gap_hours: int = 24
+
     # Evidence capture (Slice 7).
     capture_backend: str = "playwright"  # "playwright" (prod) | "fake" (tests/CI)
     tsa_backend: str = "rfc3161"  # "rfc3161" (prod) | "fake" (tests/CI)

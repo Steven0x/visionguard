@@ -388,6 +388,126 @@ def refile(
     return new_case
 
 
+def _host(url: str | None) -> str:
+    from urllib.parse import urlsplit
+
+    if not url:
+        return ""
+    return (urlsplit(url).hostname or "").lower()
+
+
+def _is_platform_key(key: str | None) -> bool:
+    """A platform/marketplace offender key (instagram:@x, etsy:shop, …) vs a bare ``domain:host``.
+    Platform detection lives in services/offender.py (the same platform set as the channel
+    registry); a ``domain:`` prefix means a non-platform host."""
+    if not key:
+        return False
+    return not key.startswith("domain:")
+
+
+def find_monitoring_case(
+    session: Session, *, subject_id: int, candidate: DiscoveryCandidate
+) -> Case | None:
+    """A monitoring case for this subject that the candidate is a reappearance of (Slice 9).
+
+    Matches by: (1) same URL (``source_key``); (2) same platform account (``offender_key``, when
+    it is account-scoped); or (3) same host + same matched asset, **only for non-platform hosts**.
+    Domain-alone never merges on a platform host — two different posts on instagram.com/x.com for
+    the same subject are distinct offences."""
+    cand_key = offender_key(candidate.page_url or candidate.source_url)
+    cand_host = _host(candidate.page_url or candidate.source_url)
+    cand_asset = candidate.best_match_asset_id
+    monitoring = session.scalars(
+        select(Case)
+        .where(Case.subject_id == subject_id, Case.status == CaseStatus.monitoring)
+        .order_by(Case.id.desc())
+    ).all()
+    for case in monitoring:
+        if candidate.source_key and case.source_key == candidate.source_key:
+            return case  # (1) same URL
+        if _is_platform_key(cand_key) and case.offender_key == cand_key:
+            return case  # (2) same platform account
+        if (
+            not _is_platform_key(cand_key)  # (3) host + asset, non-platform hosts only
+            and cand_host
+            and cand_asset is not None
+            and _host(case.page_url or case.source_url) == cand_host
+            and case.matched_asset_id == cand_asset
+        ):
+            return case
+    return None
+
+
+def reopen_case(
+    session: Session,
+    *,
+    workspace_id: int,
+    actor_staff_id: int | None,
+    subject: Subject,
+    candidate: DiscoveryCandidate,
+    case: Case,
+) -> Case:
+    """Reopen a monitoring case for a reappearance instead of opening a duplicate. Re-checks the
+    confirm guards (consent/authorization, claim support, allowlist — a bypass is a bug), moves
+    ``monitoring → discovered → confirmed`` keeping the full timeline, points the case at the new
+    candidate, and triggers a fresh evidence capture. A reopened case starts a NEW filing cycle:
+    the prior notice's approval is never reused (see services/notices.create_draft)."""
+    if CaseStatus(case.status) != CaseStatus.monitoring:
+        raise CasePreconditionFailed("only a monitoring case can be reopened")
+    if subject is None or not subject_enforcement(session, subject)["enforceable"]:
+        raise CasePreconditionFailed("subject has no active agent authorization")
+    if case.claim_type not in _supported_claims(session, subject):
+        raise CasePreconditionFailed(
+            f"claim '{case.claim_type}' is no longer supported for this subject"
+        )
+    from api.app.services.scoring import urls_allowlisted
+
+    if urls_allowlisted(session, candidate.source_url, candidate.page_url):
+        raise CasePreconditionFailed(
+            "target is on the workspace allowlist; remove it before reopening"
+        )
+
+    transition(
+        session, workspace_id=workspace_id, actor_staff_id=actor_staff_id, case=case,
+        to_status=CaseStatus.discovered, reason="reappearance",
+    )
+    transition(
+        session, workspace_id=workspace_id, actor_staff_id=actor_staff_id, case=case,
+        to_status=CaseStatus.confirmed, reason="reopened",
+    )
+    # Point the case at the reappearance (a same-URL reopen reuses the existing candidate).
+    case.candidate_id = candidate.id
+    if candidate.best_match_asset_id is not None:
+        case.matched_asset_id = candidate.best_match_asset_id
+    case.source_url = candidate.source_url
+    case.source_key = candidate.source_key
+    case.page_url = candidate.page_url
+    case.offender_key = offender_key(candidate.page_url or candidate.source_url)
+    case.reappearance_proposed_at = None
+    case.removal_unverified_at = None
+    session.flush()
+    _record_event(
+        session, case_id=case.id, kind=CaseEventKind.link,
+        actor_staff_id=actor_staff_id,
+        note=f"reopened from monitoring on candidate #{candidate.id}",
+    )
+    record_audit(
+        session, workspace_id=workspace_id, actor_staff_id=actor_staff_id,
+        action="case.reopened", entity_type="case", entity_id=str(case.id),
+        meta={"candidate_id": candidate.id, "subject_id": subject.id},
+    )
+    # Fresh capture, like a first confirm. trigger_capture COMMITS + enqueues, so it is the last
+    # action here (callers must not mutate the case afterwards).
+    from api.app.models.evidence import CaptureKind
+    from api.app.services import evidence as evidence_svc
+
+    evidence_svc.trigger_capture(
+        session, workspace_id=workspace_id, case=case,
+        kind=CaptureKind.auto, actor_staff_id=actor_staff_id,
+    )
+    return case
+
+
 def add_note(
     session: Session,
     *,

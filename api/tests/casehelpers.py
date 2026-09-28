@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy.orm import Session
+
 from api.app.db.session import tenant_session
 from api.app.models.cases import Case, CaseStatus
 from api.app.models.evidence import (
@@ -12,6 +14,13 @@ from api.app.models.evidence import (
     EvidenceCapture,
     TimestampStatus,
 )
+
+
+def load[T](session: Session, model: type[T], pk: int) -> T:
+    """session.get(...) that asserts the row exists (keeps mypy happy in tests)."""
+    obj = session.get(model, pk)
+    assert obj is not None
+    return obj
 
 
 def make_case(

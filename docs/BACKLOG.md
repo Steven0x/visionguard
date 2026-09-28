@@ -151,7 +151,23 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 - Removed cases move to `Monitoring`; matching new candidates reopen the case with its history attached
 
 **Done when:** removal rate and median time to removal compute correctly per platform and claim type.
-**Agents:** reviewer
+**Agents:** reviewer, red-team (SafeFetcher.probe + reopen guards)
+
+> **Delivered:** `notice_outcomes` (append-only, corrections supersede) map outcomes onto the
+> existing machine (`removed`→Removed, `countered`→Countered; `rejected`/`no_response` stay Filed
+> and reset the follow-up timer). Per-platform `channels.response_window_days` drives follow-up
+> due dates + an overdue-filed **follow-ups** list. A daily SafeFetcher **`probe`** (status-only,
+> **never downloads the body**; SSRF-hardened) records `url_rechecks` and only *proposes* — a
+> removal on two `gone`s ≥24h apart, a reappearance only on `gone→live` — a human confirms
+> (sealing the removal proof via Slice 7). The `removed→monitoring→closed` tail auto-advances on a
+> beat. A reappearance (same URL / platform account / non-platform host+asset — **never
+> domain-merged on a platform**) **reopens** the monitoring case with its history instead of
+> duplicating; reopen re-checks consent + allowlist + claim and needs a **fresh approval**.
+> Removal-rate + median time-to-removal (per platform × claim, **per filing**, `effective_at`
+> based, tested against a hand-computed fixture with a reopened + a withdrawn case) in
+> `services/metrics.py` + `GET /metrics/removals`. See `docs/specs/outcomes.md`, ADR 0012.
+> **Deferred:** the polished internal metrics page + monthly customer reports (Slice 10);
+> automated re-filing; recovery/demand letters (Phase 2+).
 
 ## Slice 10: Reports and metrics
 

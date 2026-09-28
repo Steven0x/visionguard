@@ -21,6 +21,14 @@ from api.app.services.offender import offender_key
         ("https://ebay.com/itm/thing?_ssn=bobstore", "ebay:bobstore"),
         ("https://randomblog.example/post/x", "domain:randomblog.example"),
         ("https://www.randomblog.example/", "domain:randomblog.example"),
+        # Reddit/YouTube: the account is NOT the first path segment — key on the real account, and
+        # fall back to domain for non-account URLs (so distinct offenders never collapse).
+        ("https://reddit.com/user/alice/comments/1", "reddit:@alice"),
+        ("https://www.reddit.com/u/bob", "reddit:@bob"),
+        ("https://reddit.com/r/pics/comments/9", "domain:reddit.com"),
+        ("https://youtube.com/@chan/videos", "youtube:@chan"),
+        ("https://www.youtube.com/channel/UC123", "youtube:@uc123"),
+        ("https://youtube.com/watch?v=abc", "domain:youtube.com"),
         (None, None),
         ("not a url", None),
     ],

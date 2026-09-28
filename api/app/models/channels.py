@@ -50,6 +50,9 @@ class Channel(PublicBase):
     destination: Mapped[str] = mapped_column(Text, nullable=False)
     # Context keys the notice/packet must contain for this channel.
     required_fields: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    # How long this platform usually takes to respond (days). Drives follow-up due dates
+    # (Slice 9); NULL falls back to case_due_days_map["filed"].
+    response_window_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(

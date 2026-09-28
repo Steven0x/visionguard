@@ -46,6 +46,13 @@ from api.app.models.notices import (
     NoticeStatus,
     NoticeVersion,
 )
+from api.app.models.outcomes import (
+    NoticeOutcome,
+    OutcomeKind,
+    OutcomeSource,
+    RecheckResult,
+    UrlRecheck,
+)
 from api.app.models.public import Staff, StaffRole, StaffWorkspaceAccess, Workspace
 from api.app.models.review import (
     DismissReason,
@@ -99,9 +106,14 @@ __all__ = [
     "FilingLog",
     "FilingOutcome",
     "Notice",
+    "NoticeOutcome",
     "NoticeStatus",
     "NoticeTemplate",
     "NoticeVersion",
+    "OutcomeKind",
+    "OutcomeSource",
+    "RecheckResult",
+    "UrlRecheck",
     "TemplateApproval",
     "TimestampStatus",
     "ReviewDecision",
