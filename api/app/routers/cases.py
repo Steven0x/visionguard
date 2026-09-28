@@ -32,6 +32,7 @@ class CaseOut(BaseModel):
     matched_asset_id: int | None
     claim_type: str
     status: CaseStatus
+    sensitive: bool
     source_url: str | None
     offender_key: str | None
     assigned_staff_id: int | None
@@ -51,6 +52,7 @@ class CaseOut(BaseModel):
             matched_asset_id=c.matched_asset_id,
             claim_type=c.claim_type,
             status=CaseStatus(c.status),
+            sensitive=c.sensitive,
             source_url=c.source_url,
             offender_key=c.offender_key,
             assigned_staff_id=c.assigned_staff_id,
@@ -301,6 +303,25 @@ def assign(
             actor_staff_id=staff.id,
             case=case,
             staff_id=payload.staff_id,
+        )
+    except svc.CasePreconditionFailed as exc:
+        raise _map_errors(exc) from exc
+    return CaseOut.of(updated)
+
+
+@router.post("/cases/{case_id}/clear-sensitive", response_model=CaseOut)
+def clear_sensitive(
+    case_id: int,
+    workspace: Workspace = Depends(require_workspace_access),
+    staff: Staff = Depends(_STAFF),
+    session: Session = Depends(get_tenant_session),
+) -> CaseOut:
+    """Explicit, audited reviewer action to mark a case NOT sensitive so report thumbnails may
+    render for it. Refused for ncii (422)."""
+    case = _case_or_404(session, case_id)
+    try:
+        updated = svc.clear_sensitive(
+            session, workspace_id=workspace.id, actor_staff_id=staff.id, case=case
         )
     except svc.CasePreconditionFailed as exc:
         raise _map_errors(exc) from exc

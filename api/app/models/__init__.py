@@ -54,6 +54,7 @@ from api.app.models.outcomes import (
     UrlRecheck,
 )
 from api.app.models.public import Staff, StaffRole, StaffWorkspaceAccess, Workspace
+from api.app.models.reports import Report
 from api.app.models.review import (
     DismissReason,
     ReviewDecision,
@@ -113,6 +114,7 @@ __all__ = [
     "OutcomeKind",
     "OutcomeSource",
     "RecheckResult",
+    "Report",
     "UrlRecheck",
     "TemplateApproval",
     "TimestampStatus",

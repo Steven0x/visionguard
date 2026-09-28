@@ -168,6 +168,8 @@ def open_case_from_candidate(
         offender_key=offender_key(candidate.page_url or candidate.source_url),
         opened_by_staff_id=actor_staff_id,
         due_at=_due_at_for(CaseStatus.confirmed),
+        # Default-deny for report imagery: every new case starts sensitive (CLAUDE.md #7).
+        sensitive=True,
     )
     session.add(case)
     # The partial unique index is the real backstop against a race between the check above and
@@ -312,6 +314,11 @@ def change_claim(
         raise CasePreconditionFailed(f"claim '{new_claim_type}' is not supported for this subject")
     old_claim = case.claim_type
     case.claim_type = new_claim_type
+    # Re-assert the invariant: ncii is ALWAYS sensitive. Reclassifying a (possibly cleared) case
+    # to ncii must re-hide its imagery — otherwise change_claim is a second door around the
+    # clear_sensitive guard (CLAUDE.md #7).
+    if new_claim_type == "ncii":
+        case.sensitive = True
     session.flush()
     _record_event(
         session,
@@ -579,6 +586,33 @@ def _staff_has_access(staff_id: int, workspace_id: int) -> bool:
             )
             is not None
         )
+
+
+def clear_sensitive(
+    session: Session,
+    *,
+    workspace_id: int,
+    actor_staff_id: int | None,
+    case: Case,
+) -> Case:
+    """A reviewer's explicit, audited action to mark a case NOT sensitive (so report thumbnails
+    may render for it). Refused for ncii — those cases are always sensitive (CLAUDE.md #7).
+    Idempotent: clearing an already-cleared case is a no-op but still audited."""
+    if case.claim_type == "ncii":
+        raise CasePreconditionFailed("ncii cases are always sensitive and can't be cleared")
+    was_sensitive = case.sensitive
+    case.sensitive = False
+    session.flush()
+    record_audit(
+        session,
+        workspace_id=workspace_id,
+        actor_staff_id=actor_staff_id,
+        action="case.sensitive_cleared",
+        entity_type="case",
+        entity_id=str(case.id),
+        meta={"claim_type": case.claim_type, "was_sensitive": was_sensitive},
+    )
+    return case
 
 
 # ── Reads ──────────────────────────────────────────────────────────────────────
