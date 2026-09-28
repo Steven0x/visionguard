@@ -101,6 +101,39 @@ def mint_token_cmd(
     typer.echo(make_test_token(clerk_user_id, azp=azp))
 
 
+@app.command("sample-report")
+def sample_report_cmd(
+    out: str = typer.Option("sample-report.pdf", help="Where to write the PDF"),
+    subject_id: int | None = typer.Option(None, help="Per-subject report (default: whole ws)"),
+    start: str = typer.Option("2020-01-01", help="Period start (YYYY-MM-DD)"),
+    end: str = typer.Option("2030-12-31", help="Period end (YYYY-MM-DD)"),
+) -> None:
+    """Seed the demo workspace, generate an agency report for it, and write the PDF locally.
+
+    Backs the Slice-10 'done when' (a sample agency report from the demo workspace). Requires a
+    SHARED object store (STORAGE_BACKEND=s3 / MinIO) so the sealed PDF is readable back."""
+    from datetime import date
+
+    from api.app.db.session import tenant_session
+    from api.app.demo import seed_demo
+    from api.app.services import reports as reports_svc
+
+    demo = seed_demo()
+    with tenant_session(demo.schema) as session:
+        report = reports_svc.generate_report(
+            session, schema=demo.schema, workspace_id=demo.workspace_id, subject_id=subject_id,
+            start=date.fromisoformat(start), end=date.fromisoformat(end),
+            actor_staff_id=None, include_thumbnails=False,
+        )
+        pdf, _ = reports_svc.read_artifact(report, which="pdf")
+    with open(out, "wb") as fh:
+        fh.write(pdf)
+    typer.echo(
+        f"report id={report.id} for workspace '{demo.workspace_slug}' written to {out} "
+        f"({len(pdf)} bytes, sha256={report.pdf_sha256[:12]}…)"
+    )
+
+
 # StaffRole is re-exported for convenience in future subcommands.
 __all__ = ["app", "StaffRole"]
 

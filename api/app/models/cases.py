@@ -11,6 +11,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -69,6 +70,12 @@ class Case(TenantBase):
     status: Mapped[CaseStatus] = mapped_column(
         String(20), nullable=False, default=CaseStatus.confirmed
     )
+    # Whether this case may involve intimate / paid / otherwise sensitive imagery. Default-deny:
+    # TRUE at confirm and for every existing case, ALWAYS TRUE (and uncleanable) for ncii. A
+    # reviewer clears it only via an explicit, audited action. Report thumbnails render only when
+    # this is FALSE (and the per-report toggle is on) — leaked paid content is often filed as
+    # copyright, so claim type alone can't gate imagery (CLAUDE.md #7).
+    sensitive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Canonical source URL + its sha256 key, copied from the candidate for dedupe/grouping.
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_key: Mapped[str | None] = mapped_column(String(64), nullable=True)

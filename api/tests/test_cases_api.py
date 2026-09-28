@@ -29,6 +29,39 @@ def _open_case(client: TestClient, ws: Workspace, hdr: dict[str, str]) -> tuple[
     return subject_id, r.json()["id"]
 
 
+def test_new_case_is_sensitive_by_default_and_can_be_cleared(
+    client: TestClient, new_workspace: Workspace, auth_header: Auth
+) -> None:
+    hdr = auth_header("admin_user")
+    _subject, case_id = _open_case(client, new_workspace, hdr)
+    base = f"/workspaces/{new_workspace.id}/cases/{case_id}"
+
+    # A confirmed case starts sensitive (default-deny for report imagery).
+    assert client.get(base, headers=hdr).json()["case"]["sensitive"] is True
+
+    # An explicit reviewer action clears it (and is audited server-side).
+    cleared = client.post(f"{base}/clear-sensitive", headers=hdr)
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["sensitive"] is False
+    assert client.get(base, headers=hdr).json()["case"]["sensitive"] is False
+
+    # Idempotent: clearing an already-cleared case is still a 200.
+    assert client.post(f"{base}/clear-sensitive", headers=hdr).status_code == 200
+
+
+def test_ncii_case_clear_sensitive_rejected(
+    client: TestClient, new_workspace: Workspace, auth_header: Auth
+) -> None:
+    hdr = auth_header("admin_user")
+    schema = new_workspace.schema_name
+    subject_id = make_subject(schema)
+    case_id = make_case(schema, subject_id, claim_type="ncii")
+    r = client.post(
+        f"/workspaces/{new_workspace.id}/cases/{case_id}/clear-sensitive", headers=hdr
+    )
+    assert r.status_code == 422  # ncii is always sensitive
+
+
 def test_open_case_lists_with_offender_key_and_timeline(
     client: TestClient, new_workspace: Workspace, auth_header: Auth
 ) -> None:

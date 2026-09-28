@@ -7,6 +7,7 @@ import {
   addCaseNote,
   assignCase,
   changeCaseClaim,
+  clearCaseSensitive,
   getCaseDetail,
   listCasesFiltered,
   listOffenders,
@@ -236,6 +237,29 @@ function CaseDetailView({
         <div>
           Candidate #{c.candidate_id ?? "—"} · matched asset #{c.matched_asset_id ?? "—"} ·
           assignee {c.assigned_staff_id ?? "—"}
+        </div>
+        <div>
+          Sensitive:{" "}
+          {c.sensitive ? (
+            <>
+              <span className="text-amber-700">yes — report thumbnails hidden</span>
+              {c.claim_type !== "ncii" && (
+                <button
+                  className="ml-2 text-blue-700 disabled:opacity-40"
+                  disabled={busy}
+                  onClick={() =>
+                    act(async () =>
+                      clearCaseSensitive(await getToken(), workspaceId, caseId),
+                    )
+                  }
+                >
+                  clear
+                </button>
+              )}
+            </>
+          ) : (
+            <span className="text-gray-600">no</span>
+          )}
         </div>
       </div>
 

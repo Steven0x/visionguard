@@ -147,6 +147,9 @@ class DiscoveryCandidate(TenantBase):
         ForeignKey("assets.id", ondelete="SET NULL"), nullable=True
     )
     matched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the candidate was FIRST shown to a reviewer (stamped once by review.list_inbox, never
+    # overwritten). review-minutes-per-case = ReviewDecision.decided_at − shown_at (Slice 10).
+    shown_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     dismiss_reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
     discovered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

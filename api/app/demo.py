@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import io
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 
 from PIL import Image, ImageDraw
 from sqlalchemy import func, select
@@ -165,6 +165,57 @@ def _ensure_assets(schema: str, subject_id: int) -> int:
     return max(created, _N_IMAGES)
 
 
+def _ensure_enforcement_history(schema: str, subject_id: int) -> None:
+    """Idempotently give the demo a small filed/removed/withdrawn history so a generated agency
+    report has real numbers. Demo-only convenience — rows are inserted directly (not through the
+    full confirm→file→remove flow), mirroring how tests build state."""
+    from api.app.models.cases import Case, CaseEvent, CaseEventKind, CaseStatus
+    from api.app.models.notices import Notice, NoticeStatus
+    from api.app.models.outcomes import NoticeOutcome, OutcomeKind, RecheckResult, UrlRecheck
+
+    with tenant_session(schema) as session:
+        existing = session.scalar(
+            select(func.count()).select_from(Case).where(Case.subject_id == subject_id)
+        )
+        if existing:
+            return  # already seeded
+
+        now = datetime.now(UTC)
+        # A removed case (verified via a `gone` recheck) — the happy path.
+        removed = Case(subject_id=subject_id, claim_type="copyright", status=CaseStatus.removed)
+        # A still-pending filed case.
+        pending = Case(subject_id=subject_id, claim_type="copyright", status=CaseStatus.filed)
+        # A withdrawn case (wrong claim, retracted).
+        withdrawn = Case(subject_id=subject_id, claim_type="copyright", status=CaseStatus.withdrawn)
+        session.add_all([removed, pending, withdrawn])
+        session.flush()
+
+        session.add(UrlRecheck(case_id=removed.id, probed_url="https://leaks.example/demostar",
+                               result=RecheckResult.gone))
+        session.add(CaseEvent(case_id=removed.id, kind=CaseEventKind.transition,
+                              to_status="removed"))
+
+        n_removed = Notice(
+            case_id=removed.id, channel_id=1, template_id=1, template_version=1,
+            claim_type="copyright", method="email", platform="instagram",
+            destination="abuse@instagram.invalid", status=NoticeStatus.sent, sent_at=now,
+        )
+        n_pending = Notice(
+            case_id=pending.id, channel_id=1, template_id=1, template_version=1,
+            claim_type="copyright", method="email", platform="reddit",
+            destination="abuse@reddit.invalid", status=NoticeStatus.sent, sent_at=now,
+        )
+        n_withdrawn = Notice(
+            case_id=withdrawn.id, channel_id=1, template_id=1, template_version=1,
+            claim_type="copyright", method="email", platform="x",
+            destination="abuse@x.invalid", status=NoticeStatus.withdrawn, sent_at=now,
+        )
+        session.add_all([n_removed, n_pending, n_withdrawn])
+        session.flush()
+        session.add(NoticeOutcome(case_id=removed.id, notice_id=n_removed.id,
+                                  outcome=OutcomeKind.removed, effective_at=now.date()))
+
+
 def _run_discovery(workspace_id: int, schema: str, subject_id: int) -> None:
     # Call the Celery task bodies directly (synchronous, no broker/worker needed).
     from worker.discovery import keyword_scan, reverse_image_scan
@@ -247,6 +298,7 @@ def seed_demo() -> DemoResult:
     schema = workspace.schema_name
     subject_id = _ensure_subject(schema)
     assets = _ensure_assets(schema, subject_id)
+    _ensure_enforcement_history(schema, subject_id)
     _run_discovery(workspace.id, schema, subject_id)
     pending, auto = _counts(schema, subject_id)
     return DemoResult(

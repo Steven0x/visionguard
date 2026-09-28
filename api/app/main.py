@@ -22,6 +22,7 @@ from api.app.routers import (
     notices,
     outcomes,
     records,
+    reports,
     review,
     subjects,
     workspaces,
@@ -81,6 +82,7 @@ def create_app() -> FastAPI:
     app.include_router(notices.router)
     app.include_router(notices.admin_router)
     app.include_router(outcomes.router)
+    app.include_router(reports.router)
     return app
 
 

@@ -243,7 +243,8 @@ Errors: outcome on a non-`filed` case → 409/422; reopen guard failure (allowli
 unsupported claim) → 422; illegal transition → 422.
 
 ## Out of scope (later)
-The polished internal metrics page + monthly customer reports (Slice 10); automated re-filing;
-demand letters / recovery; deepfake/likeness identity gates (Phase 2).
+The polished internal metrics page + monthly customer reports (Slice 10 — **now delivered**, see
+`docs/specs/reports.md`); automated re-filing; demand letters / recovery; deepfake/likeness
+identity gates (Phase 2).
 </content>
 </invoke>

@@ -114,6 +114,15 @@ def list_inbox(
             or _host(c.page_url) == d
         ]
 
+    # Stamp the moment each candidate is FIRST shown to a reviewer (never overwrite) — this is the
+    # start of the review-minutes-per-case clock (Slice 10). The tenant session commits on exit.
+    now = datetime.now(UTC)
+    for c in candidates:
+        if c.shown_at is None:
+            c.shown_at = now
+    if candidates:
+        session.flush()
+
     # Batch-load subjects + cache per-subject claim support.
     subject_ids = {c.subject_id for c in candidates}
     subjects = {

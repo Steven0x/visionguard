@@ -571,6 +571,7 @@ export interface CaseRow {
   matched_asset_id: number | null;
   claim_type: string;
   status: CaseStatus;
+  sensitive: boolean;
   source_url: string | null;
   offender_key: string | null;
   assigned_staff_id: number | null;
@@ -690,6 +691,13 @@ export const assignCase = (
   request<CaseRow>(token, `${wsBase(wsId)}/cases/${caseId}/assign`, {
     method: "POST",
     body: JSON.stringify({ staff_id: staffId }),
+  });
+
+/** Explicit, audited action to mark a case not sensitive so report thumbnails may render for it.
+ * Refused for ncii. */
+export const clearCaseSensitive = (token: string, wsId: number, caseId: number) =>
+  request<CaseRow>(token, `${wsBase(wsId)}/cases/${caseId}/clear-sensitive`, {
+    method: "POST",
   });
 
 // ── Slice 7: evidence ────────────────────────────────────────────────────────
@@ -1025,3 +1033,76 @@ export const listFollowUps = (token: string, wsId: number) =>
 
 export const getRemovalMetrics = (token: string, wsId: number) =>
   request<RemovalMetric[]>(token, `/workspaces/${wsId}/metrics/removals`);
+
+// ── Slice 10: reports + internal metrics summary ─────────────────────────────
+
+export interface ReportRow {
+  id: number;
+  subject_id: number | null;
+  period_start: string;
+  period_end: string;
+  as_of: string;
+  include_thumbnails: boolean;
+  pdf_sha256: string;
+  json_sha256: string;
+  generated_by_staff_id: number | null;
+  created_at: string;
+}
+
+export interface ProviderCost {
+  provider: string;
+  cost_cents: number;
+}
+
+export interface MetricsSummary {
+  removals: RemovalMetric[];
+  review_precision: number | null;
+  wrong_filing_rate: number | null;
+  re_upload_rate: number | null;
+  review_minutes_per_case: number | null;
+  provider_cost: ProviderCost[];
+  provider_cost_total_cents: number;
+}
+
+export const generateReport = (
+  token: string,
+  wsId: number,
+  body: {
+    subject_id?: number | null;
+    start: string;
+    end: string;
+    include_thumbnails?: boolean;
+  },
+) =>
+  request<ReportRow>(token, `/workspaces/${wsId}/reports`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const listReports = (token: string, wsId: number, subjectId?: number) =>
+  request<ReportRow[]>(
+    token,
+    `/workspaces/${wsId}/reports${subjectId != null ? `?subject_id=${subjectId}` : ""}`,
+  );
+
+export const getMetricsSummary = (token: string, wsId: number) =>
+  request<MetricsSummary>(token, `/workspaces/${wsId}/metrics/summary`);
+
+/** Fetch a sealed report artifact WITH the bearer token (so it can't be a plain link), returning
+ * a Blob the caller turns into a download. */
+export async function fetchReportBlob(
+  token: string,
+  wsId: number,
+  reportId: number,
+  which: "pdf" | "json",
+): Promise<Blob> {
+  const path =
+    which === "pdf"
+      ? `/workspaces/${wsId}/reports/${reportId}.pdf`
+      : `/workspaces/${wsId}/reports/${reportId}/inputs.json`;
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`download failed (${res.status})`);
+  return res.blob();
+}

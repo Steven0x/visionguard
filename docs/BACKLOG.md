@@ -177,6 +177,24 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 **Done when:** the first agency report is generated from real data and sent; the metrics match a hand count on one workspace.
 **Agents:** reviewer
 
+> **Delivered:** `services/metrics.py` is the **single source of counting** — `report_metrics`
+> (agency funnel: found / filed / removed split verified-vs-staff-only / median time-to-removal /
+> still-pending / open-cases-by-status / "Needs from you", all per-filing, `subject_id`- and
+> date-range-scoped) and `metrics_summary` (removal rate, median TTR, review precision,
+> wrong-filing rate, re-upload rate, review minutes per case, provider cost per workspace) —
+> each formula written next to its definition in `docs/specs/reports.md`; the report layer does
+> no counting (tested: report totals == metrics totals). Agency **PDF** + a **JSON input
+> snapshot** are computed "as of" a timestamp, SHA-256'd and **sealed write-once** in the
+> object-locked evidence bucket; the append-only `reports` row stores the keys + hashes, so a
+> report regenerates and `verify_report` re-checks it. **Data minimization:** ncii → no images
+> ever + domain-only URLs; other-claim thumbnails off by default (per-report toggle); a
+> per-subject report never includes another subject's data (each tested). Nothing is sent
+> automatically — staff generate/review/download; generation + download are audited. Added
+> `discovery_candidates.shown_at` (stamped once on first inbox render) so review-minutes measures
+> shown→decision. See `docs/specs/reports.md`, ADR 0013.
+> **Deferred (Phase 2+):** automated sending/scheduling; customer portal; cross-workspace
+> roll-ups; recovery/demand letters.
+
 ---
 
 ## Explicitly deferred to Phase 2+
