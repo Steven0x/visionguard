@@ -195,14 +195,11 @@ def confirm_candidate(
     session.refresh(candidate)
     candidate.matched_at = datetime.now(UTC)
 
-    # The case service is the only path that opens a case (dedupe, offender key, timeline).
-    case = cases_svc.open_case_from_candidate(
-        session,
-        workspace_id=workspace_id,
-        actor_staff_id=actor_staff_id,
-        subject=subject,
-        candidate=candidate,
-        claim_type=claim_type,
+    # Reappearance? A candidate matching a monitoring case reopens THAT case (with its history)
+    # instead of opening a duplicate. reopen_case re-checks the same guards and COMMITS (it
+    # triggers a fresh capture), so record the labeled decision + confirm audit first.
+    monitoring = cases_svc.find_monitoring_case(
+        session, subject_id=subject.id, candidate=candidate
     )
     session.add(
         ReviewDecision(
@@ -215,6 +212,27 @@ def confirm_candidate(
         )
     )
     session.flush()
+    if monitoring is not None:
+        record_audit(
+            session, workspace_id=workspace_id, actor_staff_id=actor_staff_id,
+            action="review.confirm", entity_type="discovery_candidate",
+            entity_id=str(candidate.id),
+            meta={"claim_type": claim_type, "case_id": monitoring.id, "reopened": True},
+        )
+        return cases_svc.reopen_case(
+            session, workspace_id=workspace_id, actor_staff_id=actor_staff_id,
+            subject=subject, candidate=candidate, case=monitoring,
+        )
+
+    # The case service is the only path that opens a case (dedupe, offender key, timeline).
+    case = cases_svc.open_case_from_candidate(
+        session,
+        workspace_id=workspace_id,
+        actor_staff_id=actor_staff_id,
+        subject=subject,
+        candidate=candidate,
+        claim_type=claim_type,
+    )
     record_audit(
         session,
         workspace_id=workspace_id,

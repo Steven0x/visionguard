@@ -97,9 +97,20 @@ notes + `allowed_transitions` + candidate/asset refs), `POST /cases/{id}/transit
 `POST /cases/{id}/assign`. Illegal transition → 422; race loser → 409; Filed precondition
 fail → 422.
 
+## Reopen & the monitoring tail (Slice 9)
+`monitoring → discovered → confirmed` is now driven by `cases.reopen_case` when a reappearance is
+confirmed (a candidate matching a monitoring case, or a same-URL re-check proposal). Reopen
+re-runs the confirm guards (authorization/consent, claim support, allowlist), keeps the case id +
+timeline, points the case at the new candidate, and triggers a fresh capture — a reopened case
+starts a **new filing cycle** (the prior notice's approval is never reused). The
+`removed → monitoring → closed` tail runs on a daily beat (system actor, audited): advance once
+the `proof_of_removal` capture seals, close once the watch window (`case_due_days["monitoring"]`)
+elapses with no reappearance pending. See `docs/specs/outcomes.md` and ADR 0012.
+
 ## Out of scope (later)
-Evidence capture fills `requires_evidence_pack()` (Slice 7); notice/filing (Slice 8);
-auto-reopen on reappearance + timer firing/notifications + the metrics computation (Slices 9–10).
+Evidence capture fills `requires_evidence_pack()` (Slice 7); notice/filing (Slice 8); the metrics
+*reporting/UI* + monthly customer reports (Slice 10 — the removal-metrics **computation** landed
+in Slice 9, `services/metrics.py`).
 
 > **Note for Slice 8:** the `→ filed` precondition check happens just before the atomic status
 > flip, so authorization could in principle lapse between the check and an actual outbound

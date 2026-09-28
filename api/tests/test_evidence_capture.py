@@ -17,6 +17,11 @@ class _BlockingFetcher:
 
         raise SsrfError(f"blocked: {url}")
 
+    def probe(self, url: str):
+        from api.app.net.ssrf import SsrfError
+
+        raise SsrfError(f"blocked: {url}")
+
 
 def test_guard_fulfills_get_via_safe_fetcher() -> None:
     decision = fulfill_or_abort("GET", "https://good.example/x.png", FakeFetcher())

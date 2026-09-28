@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from urllib.parse import parse_qs, urlsplit
 
-# host (sans leading www.) → platform label. The handle is the first path segment.
-# Note: x.com and twitter.com both normalize to the "twitter" label on purpose, so the same
-# offender groups together across the rename (the spec writes this label as "x").
+# host (sans leading www.) → platform label. For these, the account handle is the FIRST path
+# segment. Note: x.com and twitter.com both normalize to the "twitter" label on purpose, so the
+# same offender groups together across the rename (the spec writes this label as "x").
 _PLATFORMS = {
     "instagram.com": "instagram",
     "twitter.com": "twitter",
@@ -20,10 +20,14 @@ _PLATFORMS = {
     "onlyfans.com": "onlyfans",
     "facebook.com": "facebook",
     "fb.com": "facebook",
-    "reddit.com": "reddit",
-    "youtube.com": "youtube",
     "pornhub.com": "pornhub",
 }
+
+# Hosts where the account is NOT the first path segment (reddit.com/user/<x>,
+# youtube.com/@handle or /channel/<id>). Keying these off the first segment would collapse every
+# `reddit.com/user/...` to `reddit:@user` (or every `youtube.com/watch` together) and wrongly
+# merge distinct offenders — a real hazard now that the Slice-9 reopen matcher keys off this.
+# A URL that isn't an identifiable account falls through to `domain:<host>`.
 
 
 def _norm_host(host: str) -> str:
@@ -55,6 +59,24 @@ def offender_key(url: str | None) -> str | None:
             handle = seg if seg.startswith("@") else f"@{seg}"
             return f"{platform}:{handle.lower()}"
         return f"{platform}:"
+
+    # Reddit: the account is /user/<name> or /u/<name>; anything else (subreddits, posts) is not an
+    # offender account, so it groups by domain.
+    if host == "reddit.com":
+        segments = [s for s in path.split("/") if s]
+        if len(segments) >= 2 and segments[0] in ("user", "u"):
+            return f"reddit:@{segments[1].lower()}"
+        return f"domain:{host}"
+
+    # YouTube: the account is /@handle, /channel/<id>, /c/<name> or /user/<name>; a /watch URL is
+    # not an account and groups by domain.
+    if host in ("youtube.com", "m.youtube.com"):
+        segments = [s for s in path.split("/") if s]
+        if segments and segments[0].startswith("@"):
+            return f"youtube:{segments[0].lower()}"
+        if len(segments) >= 2 and segments[0] in ("channel", "c", "user"):
+            return f"youtube:@{segments[1].lower()}"
+        return f"domain:{host}"
 
     if host == "etsy.com" or host.endswith(".etsy.com"):
         segments = [s for s in path.split("/") if s]

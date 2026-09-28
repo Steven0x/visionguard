@@ -13,6 +13,7 @@ import {
 import { useToken } from "../useToken";
 import { CasesSection } from "./CasesSection";
 import { DiscoverySettingsEditor } from "./DiscoverySettingsEditor";
+import { FollowUpsSection } from "./FollowUpsSection";
 import { ReviewInbox } from "./ReviewInbox";
 import { SubjectDetail } from "./SubjectDetail";
 import { SubjectImport } from "./SubjectImport";
@@ -111,6 +112,7 @@ export function WorkspaceDetail({
         keepBlurDefault={keepBlurDefault}
       />
       <CasesSection workspaceId={workspaceId} isAdmin={isAdmin} />
+      <FollowUpsSection workspaceId={workspaceId} />
 
       <section className="space-y-2">
         <div className="flex items-center justify-between">

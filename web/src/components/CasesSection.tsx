@@ -17,6 +17,7 @@ import { useToken } from "../useToken";
 import { CaseStatusBadge } from "./CaseStatusBadge";
 import { EvidenceSection } from "./EvidenceSection";
 import { NoticeSection } from "./NoticeSection";
+import { OutcomesSection } from "./OutcomesSection";
 
 const CLAIM_TYPES = ["copyright", "likeness", "ncii", "impersonation", "trademark"];
 const NOTE_REQUIRED: CaseStatus[] = ["withdrawn"];
@@ -289,6 +290,13 @@ function CaseDetailView({
       <EvidenceSection workspaceId={workspaceId} caseId={caseId} isAdmin={isAdmin} />
 
       <NoticeSection workspaceId={workspaceId} caseId={caseId} />
+
+      <OutcomesSection
+        workspaceId={workspaceId}
+        caseId={caseId}
+        caseStatus={c.status}
+        onChanged={() => void reload()}
+      />
 
       {/* Timeline */}
       <div>

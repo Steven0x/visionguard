@@ -199,9 +199,14 @@ def create_draft(
 ) -> Notice:
     if CaseStatus(case.status) != CaseStatus.confirmed:
         raise NoticeStateError("a notice can only be drafted for a Confirmed case")
+    # Only an ACTIVE notice blocks a new draft. A reopened case (Slice 9) still carries its prior
+    # `sent`/`withdrawn` notice; that closed filing cycle must NOT carry its approval forward, so a
+    # reopened Confirmed case drafts a fresh notice needing a fresh human approval.
     existing = get_notice_for_case(session, case.id)
-    if existing is not None:
-        raise NoticeStateError("a notice already exists for this case")
+    if existing is not None and existing.status in (
+        NoticeStatus.draft, NoticeStatus.delivery_failed
+    ):
+        raise NoticeStateError("an active draft already exists for this case")
 
     channel: Channel = route_for(session, platform=platform, claim_type=case.claim_type)
     template: NoticeTemplate = get_template(
@@ -306,6 +311,18 @@ def approve(
     return notice
 
 
+def _apply_response_window(session: Session, *, case: Case, notice: Notice) -> None:
+    """After filing, set the case follow-up timer to the platform's response window (Slice 9), so
+    the case resurfaces on the follow-up list on the right cadence. Falls back to the generic
+    ``filed`` timer the case transition already set when the channel has no window."""
+    channel = get_channel(session, notice.channel_id)
+    if channel is not None and channel.response_window_days:
+        from datetime import UTC, datetime, timedelta
+
+        case.due_at = datetime.now(UTC) + timedelta(days=channel.response_window_days)
+        session.flush()
+
+
 # ── Send (email) ────────────────────────────────────────────────────────────────
 
 
@@ -375,6 +392,7 @@ def send(
         session, workspace_id=workspace_id, actor_staff_id=actor_staff_id, case=case,
         to_status=CaseStatus.filed, reason="notice_sent",
     )
+    _apply_response_window(session, case=case, notice=notice)
     session.commit()
 
     # Transport is the LAST step. On failure the send is already recorded (sealed artifact +
@@ -523,6 +541,7 @@ def record_hand_submission(
         session, workspace_id=workspace_id, actor_staff_id=actor_staff_id, case=case,
         to_status=CaseStatus.filed, reason="notice_hand_submitted",
     )
+    _apply_response_window(session, case=case, notice=notice)
     return notice
 
 

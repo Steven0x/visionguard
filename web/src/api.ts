@@ -576,6 +576,9 @@ export interface CaseRow {
   assigned_staff_id: number | null;
   due_at: string | null;
   overdue: boolean;
+  removal_proposed_at: string | null;
+  reappearance_proposed_at: string | null;
+  removal_unverified_at: string | null;
   created_at: string;
 }
 
@@ -923,3 +926,102 @@ export const listFilingLog = (token: string, wsId: number, platform?: string) =>
     token,
     `/workspaces/${wsId}/filing-log${platform ? `?platform=${encodeURIComponent(platform)}` : ""}`,
   );
+
+// ── Slice 9: outcomes, re-upload watch, follow-ups, metrics ──────────────────
+
+export type OutcomeKind = "removed" | "rejected" | "countered" | "no_response";
+
+export interface NoticeOutcomeRow {
+  id: number;
+  case_id: number;
+  notice_id: number;
+  outcome: OutcomeKind;
+  source: string;
+  effective_at: string;
+  note: string | null;
+  supersedes_id: number | null;
+  recorded_by_staff_id: number | null;
+  created_at: string;
+}
+
+export interface OutcomesDetail {
+  outcomes: NoticeOutcomeRow[];
+  effective_outcome: OutcomeKind | null;
+  removal_proposed_at: string | null;
+  reappearance_proposed_at: string | null;
+  removal_unverified_at: string | null;
+}
+
+export interface UrlRecheckRow {
+  id: number;
+  case_id: number;
+  probed_url: string;
+  http_status: number | null;
+  result: "live" | "gone" | "error";
+  detail: string | null;
+  created_at: string;
+}
+
+export interface FollowUp {
+  case_id: number;
+  subject_id: number;
+  claim_type: string;
+  offender_key: string | null;
+  due_at: string | null;
+  source_url: string | null;
+  reason: "overdue" | "removal_unverified";
+}
+
+export interface RemovalMetric {
+  platform: string;
+  claim_type: string;
+  filed: number;
+  withdrawn: number;
+  removed: number;
+  removed_verified: number;
+  removed_staff_only: number;
+  pending: number;
+  removal_rate: number | null;
+  median_days_to_removal: number | null;
+}
+
+const caseRoot = (wsId: number, caseId: number) =>
+  `/workspaces/${wsId}/cases/${caseId}`;
+
+export const getOutcomes = (token: string, wsId: number, caseId: number) =>
+  request<OutcomesDetail>(token, `${caseRoot(wsId, caseId)}/outcomes`);
+
+export const recordOutcome = (
+  token: string,
+  wsId: number,
+  caseId: number,
+  body: { outcome: OutcomeKind; effective_at?: string | null; note?: string | null },
+) =>
+  request<OutcomesDetail>(token, `${caseRoot(wsId, caseId)}/outcomes`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const dismissRemovalProposal = (
+  token: string,
+  wsId: number,
+  caseId: number,
+  note: string,
+) =>
+  request<OutcomesDetail>(
+    token,
+    `${caseRoot(wsId, caseId)}/outcomes/dismiss-removal-proposal`,
+    { method: "POST", body: JSON.stringify({ note }) },
+  );
+
+export const reopenCase = (token: string, wsId: number, caseId: number) =>
+  request<OutcomesDetail>(token, `${caseRoot(wsId, caseId)}/reopen`, { method: "POST" });
+
+export const listRechecks = (token: string, wsId: number, caseId: number) =>
+  request<UrlRecheckRow[]>(token, `${caseRoot(wsId, caseId)}/rechecks`);
+
+export const listFollowUps = (token: string, wsId: number) =>
+  request<FollowUp[]>(token, `/workspaces/${wsId}/follow-ups`);
+
+export const getRemovalMetrics = (token: string, wsId: number) =>
+  request<RemovalMetric[]>(token, `/workspaces/${wsId}/metrics/removals`);

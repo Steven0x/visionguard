@@ -37,6 +37,9 @@ class CaseOut(BaseModel):
     assigned_staff_id: int | None
     due_at: datetime | None
     overdue: bool
+    removal_proposed_at: datetime | None
+    reappearance_proposed_at: datetime | None
+    removal_unverified_at: datetime | None
     created_at: datetime
 
     @classmethod
@@ -53,6 +56,9 @@ class CaseOut(BaseModel):
             assigned_staff_id=c.assigned_staff_id,
             due_at=c.due_at,
             overdue=svc.is_overdue(c),
+            removal_proposed_at=c.removal_proposed_at,
+            reappearance_proposed_at=c.reappearance_proposed_at,
+            removal_unverified_at=c.removal_unverified_at,
             created_at=c.created_at,
         )
 

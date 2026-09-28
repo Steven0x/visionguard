@@ -15,7 +15,7 @@ celery = Celery(
     "visionguard",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["worker.tasks", "worker.discovery", "worker.evidence"],
+    include=["worker.tasks", "worker.discovery", "worker.evidence", "worker.rechecks"],
 )
 
 # In tests we run tasks inline (no broker needed).
@@ -34,6 +34,15 @@ celery.conf.beat_schedule = {
     },
     "evidence-retry-timestamps": {
         "task": "worker.retry_untimestamped_captures",
+        "schedule": 86400.0,
+    },
+    # Slice 9: re-check open URLs and run the removed→monitoring→closed tail daily.
+    "recheck-open-urls": {
+        "task": "worker.recheck_open_urls",
+        "schedule": 86400.0,
+    },
+    "monitoring-lifecycle": {
+        "task": "worker.run_monitoring_lifecycle",
         "schedule": 86400.0,
     },
 }
