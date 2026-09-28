@@ -284,15 +284,16 @@ def _case_with_thumb(
     sensitive=True (like production); pass sensitive=False to model a reviewer-cleared case."""
     from api.app.storage import get_storage
 
+    thumb_key = f"thumb/{page_url[-20:]}"
     with tenant_session(schema) as s:
         cand = DiscoveryCandidate(
             subject_id=subject, provider="serpapi", kind=CandidateKind.image,
             source_url=page_url, source_key=page_url[-60:],
-            review_status=ReviewStatus.confirmed, thumbnail_key=f"thumb/{page_url[-20:]}",
+            review_status=ReviewStatus.confirmed, thumbnail_key=thumb_key,
         )
         s.add(cand)
         s.flush()
-        get_storage().put_object(cand.thumbnail_key, b"\x89PNGfakebytes", "image/jpeg")
+        get_storage().put_object(thumb_key, b"\x89PNGfakebytes", "image/jpeg")
         case = Case(subject_id=subject, claim_type=claim, status=CaseStatus.confirmed,
                     candidate_id=cand.id, page_url=page_url, sensitive=sensitive)
         s.add(case)
@@ -353,6 +354,7 @@ def test_ncii_case_cannot_be_cleared(db: Fixtures, new_workspace) -> None:
     cid = _case_with_thumb(schema, subject, claim="ncii", page_url="https://bad.example/x")
     with tenant_session(schema) as s:
         case = cases_svc.get_case(s, cid)
+        assert case is not None
         with pytest.raises(cases_svc.CasePreconditionFailed):
             cases_svc.clear_sensitive(
                 s, workspace_id=new_workspace.id, actor_staff_id=db.admin_staff_id, case=case
@@ -372,6 +374,7 @@ def test_reclassifying_a_cleared_case_to_ncii_re_hides_imagery(
                            page_url="https://foo.example/pic", sensitive=False)
     with tenant_session(schema) as s:
         case = cases_svc.get_case(s, cid)
+        assert case is not None
         # Cleared copyright: image would render...
         on = reports_svc.gather_case_rows(s, subject_id=None, include_thumbnails=True)
         assert on[0].thumbnail is not None
@@ -424,10 +427,14 @@ def test_list_inbox_stamps_shown_at_once(db: Fixtures, new_workspace) -> None:
     with tenant_session(schema) as s:
         review_svc.list_inbox(s)  # first view stamps
     with tenant_session(schema) as s:
-        first = s.get(DiscoveryCandidate, cand_id).shown_at
+        stamped = s.get(DiscoveryCandidate, cand_id)
+        assert stamped is not None
+        first = stamped.shown_at
     assert first is not None
 
     with tenant_session(schema) as s:
         review_svc.list_inbox(s)  # second view must not move it
     with tenant_session(schema) as s:
-        assert s.get(DiscoveryCandidate, cand_id).shown_at == first
+        again = s.get(DiscoveryCandidate, cand_id)
+        assert again is not None
+        assert again.shown_at == first
