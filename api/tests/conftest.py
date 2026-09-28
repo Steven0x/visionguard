@@ -125,8 +125,50 @@ def _reset_database() -> None:
         conn.execute(text("CREATE SCHEMA public"))
 
 
+# A fixed 64-bit key namespacing THIS project's test runs. Two concurrent runs sharing
+# visionguard_test corrupt each other (one resets/migrates while the other reads) and produce
+# confusing false failures — the advisory lock below serializes them.
+_TEST_RUN_LOCK_KEY = 0x5651_5445_5354  # "VG TEST"-ish; any stable constant works
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _test_run_lock() -> Iterator[None]:
+    """Hold a Postgres session-level advisory lock for the whole test session so only one run at a
+    time touches the shared *_test database. A second concurrent run waits briefly for the first to
+    finish, then exits with a clear message instead of racing it."""
+    import time
+
+    engine = _create_engine(_TEST_DB_URL, isolation_level="AUTOCOMMIT")
+    conn = engine.connect()
+    deadline = time.monotonic() + 120  # give an in-progress run time to finish before giving up
+    while True:
+        got = conn.execute(
+            _text("SELECT pg_try_advisory_lock(:k)"), {"k": _TEST_RUN_LOCK_KEY}
+        ).scalar()
+        if got:
+            break
+        if time.monotonic() >= deadline:
+            conn.close()
+            engine.dispose()
+            pytest.exit(
+                f"another test run is in progress on {_TEST_DB_NAME!r} "
+                "(could not acquire the test-run advisory lock within 120s); aborting so the two "
+                "runs don't corrupt each other.",
+                returncode=1,
+            )
+        time.sleep(1)
+    try:
+        yield
+    finally:
+        conn.execute(_text("SELECT pg_advisory_unlock(:k)"), {"k": _TEST_RUN_LOCK_KEY})
+        conn.close()
+        engine.dispose()
+
+
 @pytest.fixture(scope="session")
-def db() -> Fixtures:
+def db(_test_run_lock: None) -> Fixtures:
+    # `_test_run_lock` is an explicit dependency so the advisory lock is held BEFORE we reset and
+    # migrate the shared database below.
     _reset_database()
     upgrade_all()  # build the public schema
 

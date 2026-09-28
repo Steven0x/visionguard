@@ -1,11 +1,17 @@
 .DEFAULT_GOAL := help
-.PHONY: help install dev infra-up infra-down migrate test test-api test-web lint lint-api lint-web fmt seed-admin seed-demo
+.PHONY: help install dev infra-up infra-down migrate test test-api test-web lint lint-api lint-web fmt seed-admin seed-demo check-venv
 
 # Load .env if present so local commands see DATABASE_URL / REDIS_URL etc.
 ifneq (,$(wildcard .env))
 include .env
 export
 endif
+
+# Always run backend Python through the project venv, never whatever `python`/`pytest` happens to
+# be on PATH (system/anaconda). Targets that need it depend on `check-venv`, which fails fast with
+# a clear message if the venv is missing. (CI installs into its own interpreter and calls the tools
+# directly, so it never touches these targets.)
+PY := .venv/bin/python
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -24,33 +30,41 @@ infra-down: ## Stop local infra
 dev: infra-up ## Run api, worker and web locally
 	honcho start
 
-migrate: ## Apply migrations to public + every tenant schema
-	python -m api.app.cli migrate
+check-venv: ## Fail fast if the project venv is missing
+	@test -x "$(PY)" || { \
+		echo "ERROR: project venv not found at '$(PY)'."; \
+		echo "Create it and install deps, e.g.:"; \
+		echo "  python3.12 -m venv .venv && . .venv/bin/activate && make install"; \
+		exit 1; \
+	}
+
+migrate: check-venv ## Apply migrations to public + every tenant schema
+	$(PY) -m api.app.cli migrate
 
 test: test-api test-web ## Run all tests
 
-test-api: ## Backend tests (pytest)
-	pytest
+test-api: check-venv ## Backend tests (pytest, via the project venv)
+	$(PY) -m pytest
 
 test-web: ## Frontend tests (vitest)
 	npm --prefix web run test -- --run
 
 lint: lint-api lint-web ## Lint + typecheck everything
 
-lint-api: ## ruff + mypy
-	ruff check api worker
-	mypy api worker
+lint-api: check-venv ## ruff + mypy
+	$(PY) -m ruff check api worker
+	$(PY) -m mypy api worker
 
 lint-web: ## eslint + tsc
 	npm --prefix web run lint
 	npm --prefix web run typecheck
 
-fmt: ## Auto-format backend
-	ruff check --fix api worker
-	ruff format api worker
+fmt: check-venv ## Auto-format backend
+	$(PY) -m ruff check --fix api worker
+	$(PY) -m ruff format api worker
 
-seed-admin: ## Create the first admin staff member (EMAIL=, CLERK_USER_ID=)
-	python -m api.app.cli seed-first-admin --email "$(EMAIL)" --clerk-user-id "$(CLERK_USER_ID)"
+seed-admin: check-venv ## Create the first admin staff member (EMAIL=, CLERK_USER_ID=)
+	$(PY) -m api.app.cli seed-first-admin --email "$(EMAIL)" --clerk-user-id "$(CLERK_USER_ID)"
 
-seed-demo: ## Seed a clickable demo workspace + subject + images + review-inbox candidates
-	python -m api.app.cli seed-demo
+seed-demo: check-venv ## Seed a clickable demo workspace + subject + images + review-inbox candidates
+	$(PY) -m api.app.cli seed-demo
