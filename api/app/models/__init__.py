@@ -9,6 +9,12 @@ from api.app.models.cases import (
     CaseNote,
     CaseStatus,
 )
+from api.app.models.channels import (
+    Channel,
+    ChannelMethod,
+    NoticeTemplate,
+    TemplateApproval,
+)
 from api.app.models.csam import (
     CsamIncident,
     CsamIncidentStatus,
@@ -32,6 +38,13 @@ from api.app.models.evidence import (
     EvidenceArtifact,
     EvidenceCapture,
     TimestampStatus,
+)
+from api.app.models.notices import (
+    FilingLog,
+    FilingOutcome,
+    Notice,
+    NoticeStatus,
+    NoticeVersion,
 )
 from api.app.models.public import Staff, StaffRole, StaffWorkspaceAccess, Workspace
 from api.app.models.review import (
@@ -70,6 +83,8 @@ __all__ = [
     "CaseStatus",
     "CaptureKind",
     "CaptureStatus",
+    "Channel",
+    "ChannelMethod",
     "CsamIncident",
     "CsamIncidentStatus",
     "CsamSource",
@@ -81,6 +96,13 @@ __all__ = [
     "DismissReason",
     "EvidenceArtifact",
     "EvidenceCapture",
+    "FilingLog",
+    "FilingOutcome",
+    "Notice",
+    "NoticeStatus",
+    "NoticeTemplate",
+    "NoticeVersion",
+    "TemplateApproval",
     "TimestampStatus",
     "ReviewDecision",
     "ReviewDecisionKind",

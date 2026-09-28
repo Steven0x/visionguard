@@ -130,6 +130,20 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 **Done when:** a confirmed copyright case on an email-channel host goes out with one approval; a trademark case can't be routed to DMCA (tested); templates are marked `unapproved` until counsel signs off, and unapproved templates can't be sent.
 **Agents:** reviewer, claims-checker, red-team (outbound)
 
+> **Delivered:** global (public-schema) channel registry + notice templates (matrix-conformant
+> seed; `trademark`/`likeness` can never route to DMCA/email — tested), draft→edit→approve→send
+> flow with a **send-time re-check** (active auth + supported claim + fresh sealed evidence +
+> counsel-approved template + recorded human approval, all in one transaction), safe minimal
+> renderer with CR/LF header/recipient injection guards, SendGrid + **outbox** email (dev/test
+> can never send real mail), the exact sent notice sealed write-once via `CaptureKind.notice`
+> (reusing Slice-7 sealing), web-form/portal copy-ready packet + hand-submission (CSAM-scanned,
+> sealed screenshot + ticket), filing log, and `Filed → Withdrawn` retraction. Templates ship
+> `unapproved`, so **nothing can be sent until counsel signs off — intended**. See
+> `docs/specs/notices.md`, ADR 0011.
+> **Deferred:** identity verification (Phase 2) still gates a real `likeness`/`ncii`/
+> `impersonation` send; `trademark` needs a Brands-mode registration record; outcomes/re-check
+> (Slice 9); automated web-form submission and demand letters (Phase 2+).
+
 ## Slice 9: Outcomes and re-upload watch
 
 - Record outcomes: removed, rejected, countered, no response; follow-up reminders after each platform's usual response window

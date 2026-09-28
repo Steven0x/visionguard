@@ -27,6 +27,7 @@ class CaptureKind(enum.StrEnum):
     recapture = "recapture"
     proof_of_removal = "proof_of_removal"
     manual_upload = "manual_upload"
+    notice = "notice"  # the exact sent notice (text + recipients + headers), sealed on send
 
 
 class CaptureStatus(enum.StrEnum):

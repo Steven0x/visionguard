@@ -72,6 +72,9 @@ class Case(TenantBase):
     # Canonical source URL + its sha256 key, copied from the candidate for dedupe/grouping.
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # The offender/page URL (may differ from source_url, e.g. a CDN image vs the hosting page).
+    # Kept so the send-time allowlist re-check can match the same URLs intake did.
+    page_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     offender_key: Mapped[str | None] = mapped_column(String(300), nullable=True)
     # Public Staff ids — no cross-schema FK (mirrors audit_log.actor_staff_id).
     opened_by_staff_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

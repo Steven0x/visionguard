@@ -107,6 +107,15 @@ class Settings(BaseSettings):
         "https://freetsa.org/tsr,http://timestamp.digicert.com,http://timestamp.sectigo.com"
     )
 
+    # Email & notices (Slice 8). `outbox` captures messages and never touches the network, so
+    # dev/test can NEVER send real mail; `sendgrid` sends via SendGrid and is refused outside
+    # production (guarded below), mirroring the CSAM/auth-bypass guards.
+    email_backend: str = "outbox"  # "outbox" (dev/test/default) | "sendgrid" (prod)
+    sendgrid_api_key: str = ""
+    email_from: str = "notices@visionguard.example"
+    email_reply_to: str = ""
+    email_rate_limit_per_min: int = 30
+
     @property
     def allowed_origin_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
@@ -172,6 +181,21 @@ class Settings(BaseSettings):
                 "CSAM_SCANNER_BACKEND=fake is only allowed when APP_ENV is 'dev' or 'test' "
                 f"(got APP_ENV={self.app_env!r}). Refusing to start."
             )
+        # Email: dev/test must never send real mail. `sendgrid` is production-only and needs
+        # its credentials; anything else falls back to the capture-only outbox.
+        if self.email_backend not in ("outbox", "sendgrid"):
+            raise ValueError("EMAIL_BACKEND must be 'outbox' or 'sendgrid'.")
+        if self.email_backend == "sendgrid":
+            if not self.is_production:
+                raise ValueError(
+                    "EMAIL_BACKEND=sendgrid is only allowed in production (APP_ENV not in "
+                    f"{sorted(_TEST_AUTH_ALLOWED_ENVS)}); dev/test can never send real mail. "
+                    f"Got APP_ENV={self.app_env!r}. Refusing to start."
+                )
+            if not (self.sendgrid_api_key and self.email_from):
+                raise ValueError(
+                    "EMAIL_BACKEND=sendgrid requires SENDGRID_API_KEY and EMAIL_FROM."
+                )
         return self
 
 

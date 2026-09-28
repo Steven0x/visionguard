@@ -693,7 +693,7 @@ export const assignCase = (
 
 export interface EvidenceCapture {
   id: number;
-  kind: "auto" | "recapture" | "proof_of_removal" | "manual_upload";
+  kind: "auto" | "recapture" | "proof_of_removal" | "manual_upload" | "notice";
   status: "pending" | "sealed" | "failed" | "blocked";
   sensitive: boolean;
   requested_url: string | null;
@@ -791,3 +791,135 @@ export const evidenceArtifactUrl = (
 
 export const evidencePackUrl = (wsId: number, caseId: number, reason: string, includeSensitive: boolean) =>
   `${API_BASE_URL}${caseBase(wsId, caseId)}/pack.pdf?reason=${encodeURIComponent(reason)}&include_sensitive=${includeSensitive}`;
+
+// ── Notices (Slice 8) ─────────────────────────────────────────────────────────
+
+export interface NoticeVersion {
+  version: number;
+  subject: string;
+  body: string;
+  edited_by_staff_id: number | null;
+  created_at: string;
+}
+
+export interface Notice {
+  id: number;
+  case_id: number;
+  platform: string;
+  method: "email" | "web_form" | "portal";
+  destination: string;
+  claim_type: string;
+  status: "draft" | "sent" | "delivery_failed" | "withdrawn";
+  current_version: number;
+  template_id: number;
+  template_version: number;
+  approved_by_staff_id: number | null;
+  approved_at: string | null;
+  sent_by_staff_id: number | null;
+  sent_at: string | null;
+  sealed_capture_id: number | null;
+  created_at: string;
+}
+
+export interface NoticeDetail {
+  notice: Notice | null;
+  versions: NoticeVersion[];
+  blockers: string[];
+  can_send: boolean;
+}
+
+export interface NoticePacket {
+  platform: string;
+  method: string;
+  destination: string;
+  subject: string;
+  body: string;
+  checklist: string[];
+  instructions: string;
+}
+
+export interface FilingLogRow {
+  id: number;
+  case_id: number;
+  notice_id: number | null;
+  platform: string;
+  claim_type: string;
+  method: string;
+  outcome: string;
+  ticket_number: string | null;
+  response: string | null;
+  filed_by_staff_id: number | null;
+  created_at: string;
+}
+
+const noticeBase = (wsId: number, caseId: number) =>
+  `/workspaces/${wsId}/cases/${caseId}/notice`;
+
+export const getNotice = (token: string, wsId: number, caseId: number) =>
+  request<NoticeDetail>(token, noticeBase(wsId, caseId));
+
+export const createNoticeDraft = (token: string, wsId: number, caseId: number, platform: string) =>
+  request<NoticeDetail>(token, noticeBase(wsId, caseId), {
+    method: "POST",
+    body: JSON.stringify({ platform }),
+  });
+
+export const editNoticeDraft = (
+  token: string,
+  wsId: number,
+  caseId: number,
+  subject: string,
+  body: string,
+) =>
+  request<NoticeDetail>(token, noticeBase(wsId, caseId), {
+    method: "PUT",
+    body: JSON.stringify({ subject, body }),
+  });
+
+export const approveNotice = (
+  token: string,
+  wsId: number,
+  caseId: number,
+  fairUseConsidered: boolean,
+) =>
+  request<NoticeDetail>(token, `${noticeBase(wsId, caseId)}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ fair_use_considered: fairUseConsidered }),
+  });
+
+export const sendNotice = (token: string, wsId: number, caseId: number) =>
+  request<Notice>(token, `${noticeBase(wsId, caseId)}/send`, { method: "POST" });
+
+export const retrySendNotice = (token: string, wsId: number, caseId: number) =>
+  request<Notice>(token, `${noticeBase(wsId, caseId)}/retry-send`, { method: "POST" });
+
+export const getNoticePacket = (token: string, wsId: number, caseId: number) =>
+  request<NoticePacket>(token, `${noticeBase(wsId, caseId)}/packet`);
+
+export const recordHandSubmission = (
+  token: string,
+  wsId: number,
+  caseId: number,
+  ticketNumber: string,
+  file: File,
+) => {
+  const form = new FormData();
+  form.append("ticket_number", ticketNumber);
+  form.append("file", file);
+  return request<Notice>(token, `${noticeBase(wsId, caseId)}/hand-submission`, {
+    method: "POST",
+    body: form,
+  });
+};
+
+export const withdrawNotice = (token: string, wsId: number, caseId: number, note: string) =>
+  request<Notice>(token, `${noticeBase(wsId, caseId)}/withdraw`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+
+export const listFilingLog = (token: string, wsId: number, platform?: string) =>
+  request<FilingLogRow[]>(
+    token,
+    `/workspaces/${wsId}/filing-log${platform ? `?platform=${encodeURIComponent(platform)}` : ""}`,
+  );

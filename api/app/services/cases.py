@@ -164,6 +164,7 @@ def open_case_from_candidate(
         status=CaseStatus.confirmed,
         source_url=candidate.source_url,
         source_key=candidate.source_key,
+        page_url=candidate.page_url,
         offender_key=offender_key(candidate.page_url or candidate.source_url),
         opened_by_staff_id=actor_staff_id,
         due_at=_due_at_for(CaseStatus.confirmed),
