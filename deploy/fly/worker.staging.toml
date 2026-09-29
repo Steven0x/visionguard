@@ -1,0 +1,19 @@
+# Staging worker — same image as production.  fly deploy -c deploy/fly/worker.staging.toml
+app = "visionguard-worker-staging"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../docker/worker.Dockerfile"
+
+[env]
+  APP_ENV = "staging"
+  EMAIL_BACKEND = "outbox"
+  LOG_JSON = "true"
+  CLERK_REQUIRE_MFA = "true"
+  STORAGE_EVIDENCE_BUCKET = "vg-evidence-staging"
+  EVIDENCE_RETENTION_DAYS = "1"
+  EVIDENCE_OBJECT_LOCK_MODE = "GOVERNANCE"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2048mb"

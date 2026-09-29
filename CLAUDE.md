@@ -54,12 +54,15 @@ Case states: `Discovered → Confirmed | Dismissed`, `Confirmed → Filed`, `Fil
 
 ## Commands
 
-(Fill these in as the scaffold lands.)
-
 - `make dev` — run API, worker and frontend locally
-- `make test` — full test suite
+- `make test` — full test suite (backend via the project venv + frontend vitest)
 - `make lint` — ruff, mypy, eslint, tsc
 - `make migrate` — apply Alembic migrations to all tenant schemas
+- Deploy: containers in `docker/`, Fly configs in `deploy/fly/`, runbook in `docs/ops/deploy.md`.
+  Migrations run as the api app's `release_command`, never on boot. Post-deploy check:
+  `python scripts/smoke.py --base-url … --token …`. Staging + production refuse to boot until a
+  real CSAM scanner backend is connected (CLAUDE.md #7); no flag relaxes it. See
+  `docs/specs/production.md` + ADR 0014.
 
 ## What not to build yet
 

@@ -10,6 +10,10 @@ class Storage(Protocol):
         """Create the bucket if it does not already exist (idempotent)."""
         ...
 
+    def bucket_reachable(self) -> bool:
+        """True if the bucket can be reached (for /readyz). No side effects."""
+        ...
+
     def put_object(self, key: str, data: bytes, content_type: str) -> None: ...
 
     def get_object(self, key: str) -> bytes:

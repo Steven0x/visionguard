@@ -44,6 +44,11 @@ capture = [
     "playwright>=1.47",
     "rfc3161ng>=2.1.3",
 ]
+# Error tracking (Slice 11). Lazy-imported and gated on SENTRY_DSN, so it is optional and NOT in
+# CI; install on the api + worker images in deployments.
+obs = [
+    "sentry-sdk[fastapi,celery]>=2.0",
+]
 
 [project.scripts]
 vg = "api.app.cli:app"

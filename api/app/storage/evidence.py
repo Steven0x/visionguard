@@ -17,6 +17,11 @@ class EvidenceExists(Exception):
 
 class EvidenceStorage(Protocol):
     def ensure_bucket(self) -> None: ...
+    def bucket_reachable(self) -> bool: ...
+    def verify_object_lock(self) -> bool:
+        """True only if the evidence bucket has object lock enabled (write-once immutability)."""
+        ...
+
     def seal_object(self, key: str, data: bytes, content_type: str) -> None: ...
     def get_object(self, key: str) -> bytes: ...
     def generate_download_url(self, key: str, *, filename: str, expires_in: int) -> str: ...
@@ -48,6 +53,21 @@ class S3EvidenceStorage:
             self._client.create_bucket(
                 Bucket=self._bucket, ObjectLockEnabledForBucket=True
             )
+
+    def bucket_reachable(self) -> bool:
+        try:
+            self._client.head_bucket(Bucket=self._bucket)
+            return True
+        except Exception:  # noqa: BLE001 - readiness probe
+            return False
+
+    def verify_object_lock(self) -> bool:
+        """Confirm the evidence bucket enforces object lock (R2/S3). Any error → not verified."""
+        try:
+            config = self._client.get_object_lock_configuration(Bucket=self._bucket)
+        except Exception:  # noqa: BLE001 - missing config / access error → not verified
+            return False
+        return config.get("ObjectLockConfiguration", {}).get("ObjectLockEnabled") == "Enabled"
 
     def _exists(self, key: str) -> bool:
         from botocore.exceptions import ClientError
@@ -96,6 +116,14 @@ class FakeEvidenceStorage:
 
     def ensure_bucket(self) -> None:
         pass
+
+    def bucket_reachable(self) -> bool:
+        return True
+
+    def verify_object_lock(self) -> bool:
+        # The fake is write-once by construction; treat lock as verified (never used in a
+        # deployment, which requires the real S3 backend).
+        return True
 
     def seal_object(self, key: str, data: bytes, content_type: str) -> None:
         if key in self._objects:

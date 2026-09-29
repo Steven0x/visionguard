@@ -3,12 +3,43 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# APP_ENV values where the Clerk-bypassing test auth is permitted.
+# APP_ENV values where the Clerk-bypassing test auth (and other fakes) are permitted.
 _TEST_AUTH_ALLOWED_ENVS = {"dev", "test"}
+# APP_ENV values that are real, network-connected deployments. They get the strict backend
+# guard (see Settings._guard_deployed_env): no fake/none backends, real Clerk, exact CORS.
+_DEPLOYED_ENVS = {"staging", "production"}
+# Real CSAM scanner backends. EMPTY until a PhotoDNA/Safer backend is implemented behind the
+# csam.py interface — so a deployed env (which requires a real backend) cannot boot yet. That
+# is intentional (CLAUDE.md #7): production must not run with imagery flowing and no scanner.
+_REAL_CSAM_BACKENDS: set[str] = set()
+# Minimum object-lock retention for production evidence (7 years), unless an explicit,
+# documented override is set. Matches the claims-matrix retention open question (pending counsel).
+_MIN_PRODUCTION_RETENTION_DAYS = 2555
+
+
+def _is_exact_origin(origin: str) -> bool:
+    """True only for a bare ``scheme://host[:port]`` origin (no path/query/fragment/wildcard).
+
+    Rejects wildcards, whitespace/control characters (incl. interior NUL and a bare trailing
+    ``#``/``?``), non-ASCII, and userinfo. The final round-trip check (``urlunsplit`` back to the
+    same string) is the real guard: anything urlsplit dropped or normalised won't match.
+    """
+    if not origin.isascii() or not origin.isprintable():
+        return False
+    if any(c in origin for c in "*#?") or origin != origin.strip():
+        return False
+    parts = urlsplit(origin)
+    if parts.scheme not in ("http", "https") or not parts.hostname or parts.username:
+        return False
+    # Exact means path/query/fragment are empty AND the string re-serialises to itself.
+    if parts.path or parts.query or parts.fragment:
+        return False
+    return urlunsplit((parts.scheme, parts.netloc, "", "", "")) == origin
 
 
 class Settings(BaseSettings):
@@ -30,6 +61,23 @@ class Settings(BaseSettings):
     clerk_jwt_issuer: str = ""
     clerk_jwks_url: str = ""
     clerk_audience: str = ""
+    # Require MFA (Clerk `fva` second-factor claim) on every staff token. Off in dev/test
+    # (test tokens carry no `fva`); the deployed-env guard requires it True in staging/production.
+    clerk_require_mfa: bool = False
+
+    # Observability & operability (Slice 11)
+    log_level: str = "INFO"
+    log_json: bool = False  # structured JSON logs; the deployed-env guard REQUIRES this on
+    sentry_dsn: str = ""  # error tracking is off unless a DSN is set
+    sentry_traces_sample_rate: float = 0.0
+
+    # Security controls (Slice 11). Off by default so dev/test behave as before; the deployed-env
+    # guard REQUIRES them on (refuses to boot otherwise). Rate limit is keyed on the VERIFIED
+    # staff id.
+    security_headers_enabled: bool = False
+    rate_limit_enabled: bool = False
+    rate_limit_writes_per_min: int = 60
+    max_request_bytes: int = 30_000_000  # hard cap on any request body (413 past this)
 
     # Redis (worker)
     redis_url: str = "redis://localhost:6379/0"
@@ -103,6 +151,8 @@ class Settings(BaseSettings):
     storage_evidence_bucket: str = "vg-evidence"  # write-once, object-locked; separate bucket
     evidence_object_lock_mode: str = "GOVERNANCE"  # GOVERNANCE | COMPLIANCE
     evidence_retention_days: int = 365  # object-lock retention (dev overrides to ~1 in .env)
+    # Non-empty reason lets production run below the 7-year floor (documented, deliberate).
+    evidence_retention_override_reason: str = ""
     evidence_freshness_days: int = 7  # a Filed case needs a sealed capture newer than this
     capture_nav_timeout_ms: int = 45_000
     capture_max_page_px: int = 20_000  # cap full-page screenshot height
@@ -153,7 +203,12 @@ class Settings(BaseSettings):
 
     @property
     def is_production(self) -> bool:
-        return self.app_env not in _TEST_AUTH_ALLOWED_ENVS
+        return self.app_env == "production"
+
+    @property
+    def is_deployed(self) -> bool:
+        """A real, network-connected deployment (staging or production) — gets the strict guard."""
+        return self.app_env in _DEPLOYED_ENVS
 
     @model_validator(mode="after")
     def _guard_test_mode(self) -> Settings:
@@ -173,9 +228,11 @@ class Settings(BaseSettings):
         if not 0 < self.storage_signed_url_ttl_seconds <= 900:
             raise ValueError("STORAGE_SIGNED_URL_TTL_SECONDS must be between 1 and 900.")
         # Fail loud on a misconfigured CSAM gate rather than silently degrading to fail-closed.
-        if self.csam_scanner_backend not in ("none", "fake"):
+        # Allowed values: none/fake plus any implemented real backend (empty set today).
+        if self.csam_scanner_backend not in ({"none", "fake"} | _REAL_CSAM_BACKENDS):
+            allowed = ", ".join(sorted({"none", "fake"} | _REAL_CSAM_BACKENDS))
             raise ValueError(
-                f"CSAM_SCANNER_BACKEND must be 'none' or 'fake' (got "
+                f"CSAM_SCANNER_BACKEND must be one of: {allowed} (got "
                 f"{self.csam_scanner_backend!r})."
             )
         if self.csam_fake_result not in ("clean", "match", "error"):
@@ -201,6 +258,91 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "EMAIL_BACKEND=sendgrid requires SENDGRID_API_KEY and EMAIL_FROM."
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _guard_deployed_env(self) -> Settings:
+        """Refuse to boot a staging/production deployment that isn't fully production-safe.
+
+        Every pluggable backend must be its REAL implementation (no fake/none), Clerk must be
+        configured, CORS must be an exact origin allowlist, and MFA must be required. Because no
+        real CSAM scanner exists yet (_REAL_CSAM_BACKENDS is empty), a deployed env cannot boot
+        until one is connected — intentional (CLAUDE.md #7). All problems are reported at once.
+        """
+        if not self.is_deployed:
+            return self
+
+        problems: list[str] = []
+        # Every backend must be real. (name, current, required)
+        for name, current, required in (
+            ("EMBEDDER_BACKEND", self.embedder_backend, "clip"),
+            ("FETCHER_BACKEND", self.fetcher_backend, "safe"),
+            ("PROVIDER_BACKEND", self.provider_backend, "serpapi"),
+            ("CAPTURE_BACKEND", self.capture_backend, "playwright"),
+            ("TSA_BACKEND", self.tsa_backend, "rfc3161"),
+            ("STORAGE_BACKEND", self.storage_backend, "s3"),
+        ):
+            if current != required:
+                problems.append(f"{name} must be {required!r} in a deployment (got {current!r}).")
+
+        # CSAM: a real scanner is mandatory — none/fake never store imagery in a deployment.
+        if self.csam_scanner_backend not in _REAL_CSAM_BACKENDS:
+            problems.append(
+                "CSAM_SCANNER_BACKEND must be a real scanner backend in a deployment (got "
+                f"{self.csam_scanner_backend!r}). No real backend is connected yet, so a "
+                "deployment cannot start until one is — intentional (CLAUDE.md #7)."
+            )
+
+        # Clerk must be configured (the test-auth bypass is already forbidden here).
+        if not self.clerk_jwt_issuer:
+            problems.append("CLERK_JWT_ISSUER is required in a deployment.")
+        if not self.clerk_jwks_url:
+            problems.append("CLERK_JWKS_URL is required in a deployment.")
+        if not self.clerk_require_mfa:
+            problems.append("CLERK_REQUIRE_MFA must be true in a deployment (staff MFA required).")
+
+        # The hardening controls must actually be ON — a deployment must not boot degraded just
+        # because a toml env block was copied/edited. The guard enforces them, not the toml alone.
+        if not self.log_json:
+            problems.append("LOG_JSON must be true in a deployment (structured, scrubbed logs).")
+        if not self.security_headers_enabled:
+            problems.append("SECURITY_HEADERS_ENABLED must be true in a deployment.")
+        if not self.rate_limit_enabled:
+            problems.append("RATE_LIMIT_ENABLED must be true in a deployment.")
+
+        # CORS must be a non-empty list of exact origins (no wildcard, no path).
+        origins = self.allowed_origin_list
+        if not origins:
+            problems.append("ALLOWED_ORIGINS must be a non-empty exact-origin list.")
+        else:
+            bad = [o for o in origins if not _is_exact_origin(o)]
+            if bad:
+                problems.append(f"ALLOWED_ORIGINS entries are not exact origins: {bad}.")
+
+        # Email: production sends via SendGrid; staging must never send real mail (outbox only).
+        if self.is_production and self.email_backend != "sendgrid":
+            problems.append("EMAIL_BACKEND must be 'sendgrid' in production.")
+        if self.app_env == "staging" and self.email_backend != "outbox":
+            problems.append("EMAIL_BACKEND must be 'outbox' in staging (fake email only).")
+
+        # Production evidence retention floor (7 years) unless a documented override is set.
+        if (
+            self.is_production
+            and self.evidence_retention_days < _MIN_PRODUCTION_RETENTION_DAYS
+            and not self.evidence_retention_override_reason.strip()
+        ):
+            problems.append(
+                f"EVIDENCE_RETENTION_DAYS must be >= {_MIN_PRODUCTION_RETENTION_DAYS} in "
+                "production unless EVIDENCE_RETENTION_OVERRIDE_REASON is set (got "
+                f"{self.evidence_retention_days})."
+            )
+
+        if problems:
+            joined = "\n  - ".join(problems)
+            raise ValueError(
+                f"APP_ENV={self.app_env!r} is a deployment but its config is not "
+                f"production-safe. Refusing to start:\n  - {joined}"
+            )
         return self
 
 

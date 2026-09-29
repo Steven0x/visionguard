@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from worker.celery_app import celery
+from worker.locks import single_run
 
 
 def _workspace_ids() -> list[int]:
@@ -29,6 +30,7 @@ def _workspace_ids() -> list[int]:
 
 
 @celery.task(name="worker.recheck_open_urls")
+@single_run("recheck-open-urls")
 def recheck_open_urls() -> int:
     """Beat: probe every open filed/monitoring case's URL and record + evaluate the result."""
     checked = 0
@@ -68,6 +70,7 @@ def _proof_of_removal_sealed(session: Session, case_id: int) -> bool:
 
 
 @celery.task(name="worker.run_monitoring_lifecycle")
+@single_run("run-monitoring-lifecycle")
 def run_monitoring_lifecycle() -> dict[str, int]:
     """Beat: advance ``removed → monitoring`` (once the proof capture has sealed) and
     ``monitoring → closed`` (once the watch window has elapsed with no reappearance pending)."""

@@ -32,6 +32,15 @@ class AuthError(Exception):
 class ClerkClaims:
     subject: str
     azp: str | None
+    mfa_verified: bool = False
+
+
+def _mfa_verified(payload: dict) -> bool:
+    """Clerk's ``fva`` (factor verification age) claim is ``[firstFactorAge, secondFactorAge]``
+    in minutes; a second-factor age of ``-1`` means MFA was not performed on this session. We
+    treat any non-negative second-factor age as verified."""
+    fva = payload.get("fva")
+    return isinstance(fva, list) and len(fva) >= 2 and isinstance(fva[1], int) and fva[1] >= 0
 
 
 @lru_cache(maxsize=8)
@@ -91,15 +100,30 @@ def verify_token(token: str, settings: Settings) -> ClerkClaims:
     if allowed and (azp is None or azp not in allowed):
         raise AuthError(f"azp {azp!r} is not an allowed origin")
 
-    return ClerkClaims(subject=subject, azp=azp)
+    # MFA is enforced server-side by checking the session claim, not just a Clerk dashboard
+    # setting: a session without a verified second factor is rejected in deployments.
+    mfa_verified = _mfa_verified(payload)
+    if settings.clerk_require_mfa and not mfa_verified:
+        raise AuthError("multi-factor authentication is required for this session")
+
+    return ClerkClaims(subject=subject, azp=azp, mfa_verified=mfa_verified)
 
 
 def make_test_token(
-    clerk_user_id: str, *, azp: str | None = None, expires_in: int = 3600
+    clerk_user_id: str,
+    *,
+    azp: str | None = None,
+    expires_in: int = 3600,
+    mfa: bool | None = None,
 ) -> str:
-    """Mint an HS256 token for tests (only valid when AUTH_TEST_MODE is on)."""
+    """Mint an HS256 token for tests (only valid when AUTH_TEST_MODE is on).
+
+    ``mfa`` sets the ``fva`` claim: True → second factor verified, False → not (``-1``). Left as
+    None, the claim is omitted (the common case, since dev/test don't require MFA)."""
     now = int(time.time())
     claims: dict[str, Any] = {"sub": clerk_user_id, "iat": now, "exp": now + expires_in}
     if azp is not None:
         claims["azp"] = azp
+    if mfa is not None:
+        claims["fva"] = [0, 0 if mfa else -1]
     return jwt.encode(claims, TEST_JWT_SECRET, algorithm="HS256")
