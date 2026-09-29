@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 
-from fastapi import Depends, HTTPException, Path, status
+from fastapi import Depends, HTTPException, Path, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,15 +25,30 @@ from api.app.auth.clerk import AuthError, verify_token
 from api.app.config import Settings, get_settings
 from api.app.db.session import public_session, tenant_session
 from api.app.models.public import Staff, StaffRole, StaffWorkspaceAccess, Workspace
+from api.app.obs.ratelimit import RateLimited, client_ip, enforce_write_rate_limit
 
 _bearer = HTTPBearer(auto_error=False)
 
 
+def _rate_limit(request: Request, *, identity: str) -> None:
+    try:
+        enforce_write_rate_limit(request, identity=identity)
+    except RateLimited as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="rate limit exceeded",
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+
+
 def get_current_staff(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     settings: Settings = Depends(get_settings),
 ) -> Staff:
     if credentials is None or not credentials.credentials:
+        # Rate-limit unauthenticated writers by client IP before rejecting.
+        _rate_limit(request, identity=f"ip:{client_ip(request)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="missing bearer token",
@@ -42,6 +57,9 @@ def get_current_staff(
     try:
         claims = verify_token(credentials.credentials, settings)
     except AuthError as exc:
+        # A forged/invalid token is keyed on IP, never on a staff id — it can't consume or reset
+        # a real staff member's quota.
+        _rate_limit(request, identity=f"ip:{client_ip(request)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),
@@ -62,6 +80,8 @@ def get_current_staff(
         # Detach before the session closes; callers read scalar columns only (no lazy
         # relationship loads, which would raise DetachedInstanceError).
         session.expunge(staff)
+    # Rate-limit the authenticated writer on the VERIFIED staff id.
+    _rate_limit(request, identity=f"staff:{staff.id}")
     return staff
 
 

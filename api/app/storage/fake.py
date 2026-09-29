@@ -14,6 +14,9 @@ class FakeStorage:
     def ensure_bucket(self) -> None:
         pass
 
+    def bucket_reachable(self) -> bool:
+        return True
+
     def put_object(self, key: str, data: bytes, content_type: str) -> None:
         self._objects[key] = data
 

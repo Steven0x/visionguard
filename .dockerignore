@@ -1,0 +1,29 @@
+# Keep build context small and never ship local/dev artifacts or secrets into an image.
+.git
+.github
+.venv
+venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+visionguard.egg-info
+
+# Frontend (built + deployed separately on Vercel)
+web/node_modules
+web/dist
+
+# Local infra + tests + docs (not needed at runtime)
+docker-compose.yml
+api/tests
+worker/tests
+docs
+templates
+celerybeat-schedule*
+
+# Secrets / local config — must NEVER enter an image
+.env
+.env.*
+!.env.example

@@ -1,0 +1,43 @@
+# Fly config for the VisionGuard API (production).
+#   fly deploy -c deploy/fly/api.toml
+# Secrets (DATABASE_URL, REDIS_URL, CLERK_*, STORAGE_* creds, SENDGRID_API_KEY, SENTRY_DSN, …)
+# are set with `fly secrets set` — NEVER put them here. See deploy/fly/README.md.
+app = "visionguard-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../docker/api.Dockerfile"
+
+# Migrations run here as a SEPARATE release step on the new image, before traffic cuts over.
+# A non-zero exit aborts the deploy. Migrations never run on app boot.
+[deploy]
+  release_command = "python -m api.app.cli migrate"
+  strategy = "rolling"
+
+[env]
+  APP_ENV = "production"
+  LOG_JSON = "true"
+  SECURITY_HEADERS_ENABLED = "true"
+  RATE_LIMIT_ENABLED = "true"
+  CLERK_REQUIRE_MFA = "true"
+  EVIDENCE_RETENTION_DAYS = "2555"        # 7 years (claims-matrix default, pending counsel)
+  EVIDENCE_OBJECT_LOCK_MODE = "COMPLIANCE"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # Route traffic only when the app is actually ready (DB + Redis + storage reachable).
+  [[http_service.checks]]
+    method = "get"
+    path = "/readyz"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

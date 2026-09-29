@@ -20,6 +20,7 @@ from api.app.storage.evidence import get_evidence_storage
 from sqlalchemy import select
 
 from worker.celery_app import celery
+from worker.locks import single_run
 
 
 @celery.task(name="worker.capture_evidence")
@@ -69,6 +70,7 @@ def capture_evidence(workspace_id: int, capture_id: int) -> str:
 
 
 @celery.task(name="worker.retry_untimestamped_captures")
+@single_run("retry-untimestamped-captures")
 def retry_untimestamped_captures() -> int:
     """Beat: re-attempt the TSA for sealed-but-untimestamped captures."""
     from api.app.db.session import public_session

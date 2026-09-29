@@ -27,6 +27,13 @@ class S3Storage:
         except ClientError:
             self._client.create_bucket(Bucket=self._bucket)
 
+    def bucket_reachable(self) -> bool:
+        try:
+            self._client.head_bucket(Bucket=self._bucket)
+            return True
+        except Exception:  # noqa: BLE001 - readiness probe: any failure means not reachable
+            return False
+
     def put_object(self, key: str, data: bytes, content_type: str) -> None:
         self._client.put_object(
             Bucket=self._bucket, Key=key, Body=data, ContentType=content_type

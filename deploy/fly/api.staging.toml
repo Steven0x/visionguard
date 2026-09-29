@@ -1,0 +1,43 @@
+# Staging API — same image as production, but APP_ENV=staging, fake email only, and a separate
+# evidence bucket with a short (1-day) object-lock retention so test captures aren't locked for
+# 7 years.  fly deploy -c deploy/fly/api.staging.toml
+# Note: staging is a real mirror and (like production) requires a REAL CSAM scanner — no flag
+# relaxes it, so staging won't boot until one is connected. Intended (CLAUDE.md #7).
+app = "visionguard-api-staging"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../docker/api.Dockerfile"
+
+[deploy]
+  release_command = "python -m api.app.cli migrate"
+  strategy = "rolling"
+
+[env]
+  APP_ENV = "staging"
+  EMAIL_BACKEND = "outbox"                 # staging can NEVER send real mail
+  LOG_JSON = "true"
+  SECURITY_HEADERS_ENABLED = "true"
+  RATE_LIMIT_ENABLED = "true"
+  CLERK_REQUIRE_MFA = "true"
+  STORAGE_EVIDENCE_BUCKET = "vg-evidence-staging"
+  EVIDENCE_RETENTION_DAYS = "1"
+  EVIDENCE_OBJECT_LOCK_MODE = "GOVERNANCE"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "get"
+    path = "/readyz"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

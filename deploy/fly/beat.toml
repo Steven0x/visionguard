@@ -1,0 +1,25 @@
+# Fly config for the VisionGuard Celery beat / scheduler (production).
+#   fly deploy -c deploy/fly/beat.toml
+#
+# Beat MUST run as EXACTLY ONE machine — two schedulers would double-enqueue jobs. After the
+# first deploy, pin it:
+#   fly scale count 1 -a visionguard-beat
+# Belt-and-braces: every scheduled task takes a per-job Redis lock (worker/locks.py), so a stray
+# second beat is a no-op. Same secrets as the api app.
+app = "visionguard-beat"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../docker/beat.Dockerfile"
+
+[env]
+  APP_ENV = "production"
+  LOG_JSON = "true"
+  CLERK_REQUIRE_MFA = "true"
+  EVIDENCE_RETENTION_DAYS = "2555"
+  EVIDENCE_OBJECT_LOCK_MODE = "COMPLIANCE"
+
+# Exactly one instance; do not autostart extras.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

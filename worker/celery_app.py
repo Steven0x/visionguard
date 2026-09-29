@@ -8,8 +8,21 @@ from __future__ import annotations
 
 from api.app.config import get_settings
 from celery import Celery
+from celery.signals import setup_logging
 
 settings = get_settings()
+
+
+@setup_logging.connect
+def _configure_worker_logging(**_kwargs: object) -> None:
+    """Own logging setup on the worker/beat (fires at process start, not import) so records go
+    through the scrubber and Sentry is initialised if a DSN is set. Connecting to this signal
+    also stops Celery from installing its own unscrubbed handlers."""
+    from api.app.obs.logging import configure_logging
+    from api.app.obs.sentry import init_sentry
+
+    configure_logging(settings)
+    init_sentry(settings)
 
 celery = Celery(
     "visionguard",

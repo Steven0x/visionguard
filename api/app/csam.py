@@ -55,9 +55,14 @@ class FakeCsamScanner:
 
 def get_csam_scanner() -> CsamScanner:
     # Not cached: scanners are stateless + trivial, and the backend is read fresh each call.
-    if get_settings().csam_scanner_backend == "fake":
+    backend = get_settings().csam_scanner_backend
+    if backend == "fake":
         return FakeCsamScanner()
-    return NoneScanner()
+    if backend == "none":
+        return NoneScanner()
+    # A real backend name that config accepted but is not implemented here must fail LOUD, not
+    # silently fall back to NoneScanner (which would look like a wired-but-blocking scanner).
+    raise CsamScanError(f"no CSAM scanner implementation for backend {backend!r}")
 
 
 def csam_scanner_configured() -> bool:

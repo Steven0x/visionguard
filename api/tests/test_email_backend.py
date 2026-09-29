@@ -13,6 +13,7 @@ from api.app.email.backend import (
     EmailSendError,
     OutboxBackend,
 )
+from api.tests.deployhelpers import deployed_env
 
 
 def _msg(
@@ -78,11 +79,8 @@ def test_config_sendgrid_requires_credentials(monkeypatch: pytest.MonkeyPatch) -
 def test_config_sendgrid_ok_in_production_with_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("AUTH_TEST_MODE", "0")
-    monkeypatch.setenv("CSAM_SCANNER_BACKEND", "none")
-    monkeypatch.setenv("EMAIL_BACKEND", "sendgrid")
-    monkeypatch.setenv("SENDGRID_API_KEY", "SG.fake")
-    monkeypatch.setenv("EMAIL_FROM", "notices@visionguard.example")
+    # A fully production-safe config (real scanner registered on the test side) boots and sends
+    # via SendGrid.
+    deployed_env(monkeypatch, app_env="production")
     settings = Settings()
     assert settings.email_backend == "sendgrid"

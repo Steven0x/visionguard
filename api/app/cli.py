@@ -12,6 +12,15 @@ from api.app.services.staff import seed_first_admin
 app = typer.Typer(help="VisionGuard admin CLI", no_args_is_help=True)
 
 
+@app.callback()
+def _main() -> None:
+    """Configure structured, scrubbed logging for every CLI command (incl. the migrate release
+    step) so nothing sensitive leaks to deploy logs."""
+    from api.app.obs.logging import configure_logging
+
+    configure_logging()
+
+
 @app.command()
 def migrate() -> None:
     """Apply migrations to the public schema and every tenant schema."""

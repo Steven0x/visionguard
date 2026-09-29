@@ -32,6 +32,7 @@ from api.app.storage import get_storage
 from sqlalchemy import select
 
 from worker.celery_app import celery
+from worker.locks import single_run
 
 _SIGNED_TTL = 300
 
@@ -202,6 +203,7 @@ def _due(frequency: ScanFrequency, last_scan: datetime | None) -> bool:
 
 
 @celery.task(name="worker.dispatch_scheduled_scans")
+@single_run("dispatch-scheduled-scans")
 def dispatch_scheduled_scans() -> int:
     """Beat: enqueue due scans per workspace (enforceable subjects + their ready assets)."""
     with public_session() as session:
@@ -250,6 +252,7 @@ def dispatch_scheduled_scans() -> int:
 
 
 @celery.task(name="worker.cleanup_expired_thumbnails")
+@single_run("cleanup-expired-thumbnails")
 def cleanup_expired_thumbnails() -> int:
     """Beat: delete candidate thumbnails + rows past the workspace retention window.
 

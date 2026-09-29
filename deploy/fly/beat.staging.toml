@@ -1,0 +1,20 @@
+# Staging beat — same image as production; exactly one machine.
+#   fly deploy -c deploy/fly/beat.staging.toml && fly scale count 1 -a visionguard-beat-staging
+app = "visionguard-beat-staging"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../docker/beat.Dockerfile"
+
+[env]
+  APP_ENV = "staging"
+  EMAIL_BACKEND = "outbox"
+  LOG_JSON = "true"
+  CLERK_REQUIRE_MFA = "true"
+  STORAGE_EVIDENCE_BUCKET = "vg-evidence-staging"
+  EVIDENCE_RETENTION_DAYS = "1"
+  EVIDENCE_OBJECT_LOCK_MODE = "GOVERNANCE"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

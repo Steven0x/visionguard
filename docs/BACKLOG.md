@@ -195,6 +195,33 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 > **Deferred (Phase 2+):** automated sending/scheduling; customer portal; cross-workspace
 > roll-ups; recovery/demand letters.
 
+## Slice 11: Production readiness & deploy
+
+- Deployed-env config guard: `staging`/`production` refuse to boot if any backend is fake/none, if
+  Clerk/CORS/MFA aren't set correctly, or (startup) if the evidence bucket's object lock or session
+  advisory locks can't be verified
+- Containers (non-root, pinned, slim) for api/worker/beat; web builds static on Vercel
+- Migrations as a separate release step (never on boot); `/healthz` + `/readyz`; structured JSON
+  logs with a scrubber (tokens, emails, ncii URLs, file contents)
+- Security: headers, request-size limit on received bytes, rate limiting keyed on verified staff
+  id, server-side Clerk MFA
+- Backups/PITR + a documented restore drill; evidence retention default 7 years (config)
+- Sentry behind a flag with the same scrubbing; a staging mirror (fake email only); a post-deploy
+  smoke script
+
+**Done when:** the guard refuses every degraded config (tested); images build and run non-root; the
+smoke script passes against a running env.
+**Agents:** reviewer, red-team
+
+> **Delivered:** `_guard_deployed_env` (config.py) + startup `verify_deployed_readiness` (object
+> lock + Supabase session-pooler advisory-lock check); `api/app/obs/` (scrubbed JSON logging routed
+> through the uvicorn/gunicorn loggers, flagged Sentry, cached `/readyz`); `api/app/middleware/`
+> (security headers, received-bytes size limit); rate limiting in the auth dependency; Clerk `fva`
+> MFA; `worker/locks.py` beat single-run lock; `docker/*` + `deploy/fly/*` + `web/vercel.json`;
+> `scripts/smoke.py`. See `docs/specs/production.md`, `docs/ops/deploy.md`, ADR 0014.
+> **Intentional gate:** staging + production cannot boot until a REAL CSAM scanner backend is
+> connected (CLAUDE.md #7) — no flag relaxes it. That is the remaining pre-production task.
+
 ---
 
 ## Explicitly deferred to Phase 2+

@@ -1,0 +1,20 @@
+# Fly config for the VisionGuard Celery worker (production).
+#   fly deploy -c deploy/fly/worker.toml
+# No release_command here — migrations run once, from the api app. Same secrets as the api app.
+app = "visionguard-worker"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../docker/worker.Dockerfile"
+
+[env]
+  APP_ENV = "production"
+  LOG_JSON = "true"
+  CLERK_REQUIRE_MFA = "true"
+  EVIDENCE_RETENTION_DAYS = "2555"
+  EVIDENCE_OBJECT_LOCK_MODE = "COMPLIANCE"
+
+# No [http_service]: the worker pulls jobs from Redis, it doesn't serve HTTP.
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2048mb"       # torch (OpenCLIP) + a Chromium capture need headroom
