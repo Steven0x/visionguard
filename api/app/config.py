@@ -110,6 +110,9 @@ class Settings(BaseSettings):
     fetcher_user_agent: str = "VisionGuard/1.0 (+https://visionguard.example)"
     discovery_default_monthly_budget: int = 500
     discovery_intake_max_urls: int = 200
+    # Slice 12: cap URL tips per agency user per day (on top of the per-minute write rate limit),
+    # since each tip can trigger a fetch + provider cost. Over the cap → 429.
+    portal_tip_daily_cap: int = 50
     serpapi_key: str = ""
     tineye_api_key: str = ""
     serpapi_cost_cents_per_call: int = 1

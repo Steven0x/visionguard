@@ -3,7 +3,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000
 export interface Me {
   id: number;
   email: string;
-  role: "admin" | "reviewer";
+  role: "admin" | "reviewer" | "agency";
   all_workspaces: boolean;
   review_keep_blur: boolean;
 }
@@ -1101,6 +1101,115 @@ export async function fetchReportBlob(
       ? `/workspaces/${wsId}/reports/${reportId}.pdf`
       : `/workspaces/${wsId}/reports/${reportId}/inputs.json`;
   const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`download failed (${res.status})`);
+  return res.blob();
+}
+
+// ── Agency portal (Slice 12) ──────────────────────────────────────────────────
+// All portal responses are minimized server-side; the workspace is resolved from the agency
+// user's membership, so none of these take a workspace id.
+export interface PortalContext {
+  email: string;
+  role: string;
+  workspace_id: number;
+  workspace_name: string;
+}
+
+export interface PortalSubject {
+  id: number;
+  legal_name: string;
+  stage_names: string[];
+  handles: string[];
+  status: string;
+}
+
+export interface PortalCase {
+  id: number;
+  subject_id: number;
+  claim_type: string;
+  status: string;
+  display_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PortalTimelineEvent {
+  from_status: string | null;
+  to_status: string | null;
+  created_at: string;
+}
+
+export interface PortalCaseDetail {
+  case: PortalCase;
+  timeline: PortalTimelineEvent[];
+}
+
+export interface PortalReport {
+  id: number;
+  subject_id: number | null;
+  period_start: string;
+  period_end: string;
+  created_at: string;
+}
+
+export interface PortalNeed {
+  subject_id: number;
+  subject_name: string;
+  need_type: string;
+  label: string;
+}
+
+export const getPortalContext = (token: string) =>
+  request<PortalContext>(token, "/portal/context");
+
+export const listPortalSubjects = (token: string) =>
+  request<PortalSubject[]>(token, "/portal/subjects");
+
+export const listPortalCases = (token: string) =>
+  request<PortalCase[]>(token, "/portal/cases");
+
+export const getPortalCase = (token: string, caseId: number) =>
+  request<PortalCaseDetail>(token, `/portal/cases/${caseId}`);
+
+export const listPortalReports = (token: string) =>
+  request<PortalReport[]>(token, "/portal/reports");
+
+export const listPortalNeeds = (token: string) =>
+  request<PortalNeed[]>(token, "/portal/needs");
+
+export interface TipResult {
+  submission_id: number;
+  candidate_created: boolean;
+  detail: string;
+}
+
+export const submitPortalTip = (token: string, subjectId: number, url: string) =>
+  request<TipResult>(token, "/portal/tips", {
+    method: "POST",
+    body: JSON.stringify({ subject_id: subjectId, url }),
+  });
+
+/** Answer a "Needs from you" item with text and/or a PDF (multipart). */
+export async function answerPortalNeed(
+  token: string,
+  subjectId: number,
+  needType: string,
+  body: string,
+  file: File | null,
+): Promise<{ submission_id: number; detail: string }> {
+  const form = new FormData();
+  form.append("subject_id", String(subjectId));
+  form.append("need_type", needType);
+  if (body) form.append("body", body);
+  if (file) form.append("file", file);
+  return request(token, "/portal/needs/answer", { method: "POST", body: form });
+}
+
+/** Download a sealed report PDF with the bearer token (never a plain link). */
+export async function fetchPortalReportPdf(token: string, reportId: number): Promise<Blob> {
+  const res = await fetch(`${API_BASE_URL}/portal/reports/${reportId}.pdf`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`download failed (${res.status})`);

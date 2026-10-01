@@ -53,6 +53,11 @@ from api.app.models.outcomes import (
     RecheckResult,
     UrlRecheck,
 )
+from api.app.models.portal import (
+    PortalSubmission,
+    SubmissionKind,
+    SubmissionStatus,
+)
 from api.app.models.public import Staff, StaffRole, StaffWorkspaceAccess, Workspace
 from api.app.models.reports import Report
 from api.app.models.review import (
@@ -113,8 +118,11 @@ __all__ = [
     "NoticeVersion",
     "OutcomeKind",
     "OutcomeSource",
+    "PortalSubmission",
     "RecheckResult",
     "Report",
+    "SubmissionKind",
+    "SubmissionStatus",
     "UrlRecheck",
     "TemplateApproval",
     "TimestampStatus",
