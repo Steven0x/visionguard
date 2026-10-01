@@ -15,9 +15,11 @@ from api.app.auth.deps import (
     require_role,
     require_workspace_access,
 )
+from api.app.db.session import public_session
 from api.app.models.audit import AuditLog
 from api.app.models.public import Staff, StaffRole, Workspace
 from api.app.models.subjects import AllowlistEntry, AllowlistKind
+from api.app.services import agency_users as agency_svc
 from api.app.services import workspaces as ws_service
 from api.app.services.workspaces import WORKSPACE_PLANS, DuplicateWorkspace
 
@@ -214,4 +216,90 @@ def workspace_me(
         workspace_id=workspace.id,
         workspace_name=workspace.name,
         audit_events=count,
+    )
+
+
+# ── Agency portal users (admin only; Slice 12) ──────────────────────────────────
+class AgencyUserCreate(BaseModel):
+    clerk_user_id: str = Field(min_length=1, max_length=255)
+    email: str = Field(min_length=3, max_length=320)
+
+
+class AgencyUserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: str
+    role: StaffRole
+
+
+@router.post(
+    "/{workspace_id}/agency-users",
+    response_model=AgencyUserOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_agency_user(
+    payload: AgencyUserCreate,
+    workspace: Workspace = Depends(require_workspace_access),
+    staff: Staff = Depends(_ADMIN),
+    session: Session = Depends(get_tenant_session),
+) -> AgencyUserOut:
+    # Staff/grant live in the public schema; audit lands in this workspace's tenant log.
+    try:
+        with public_session() as public:
+            created = agency_svc.create_agency_user(
+                public,
+                workspace_id=workspace.id,
+                clerk_user_id=payload.clerk_user_id,
+                email=payload.email,
+            )
+            out = AgencyUserOut.model_validate(created)
+    except agency_svc.AgencyUserError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    record_audit(
+        session,
+        workspace_id=workspace.id,
+        actor_staff_id=staff.id,
+        action="agency_user.created",
+        entity_type="staff",
+        entity_id=str(out.id),
+    )
+    return out
+
+
+@router.get("/{workspace_id}/agency-users", response_model=list[AgencyUserOut])
+def list_agency_users(
+    workspace: Workspace = Depends(require_workspace_access),
+    staff: Staff = Depends(_ADMIN),
+) -> list[AgencyUserOut]:
+    with public_session() as public:
+        rows = agency_svc.list_agency_users(public, workspace_id=workspace.id)
+        return [AgencyUserOut.model_validate(r) for r in rows]
+
+
+@router.delete("/{workspace_id}/agency-users/{staff_id}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_agency_user(
+    staff_id: int,
+    workspace: Workspace = Depends(require_workspace_access),
+    staff: Staff = Depends(_ADMIN),
+    session: Session = Depends(get_tenant_session),
+) -> None:
+    with public_session() as public:
+        target = agency_svc.get_agency_user(
+            public, workspace_id=workspace.id, staff_id=staff_id
+        )
+        if target is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="agency user not found"
+            )
+        agency_svc.revoke_agency_user(public, staff=target)
+    record_audit(
+        session,
+        workspace_id=workspace.id,
+        actor_staff_id=staff.id,
+        action="agency_user.revoked",
+        entity_type="staff",
+        entity_id=str(staff_id),
     )

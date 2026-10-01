@@ -29,7 +29,7 @@ from api.app.models.cases import (
     CaseStatus,
 )
 from api.app.models.discovery import DiscoveryCandidate
-from api.app.models.public import Staff, StaffWorkspaceAccess
+from api.app.models.public import Staff, StaffRole, StaffWorkspaceAccess
 from api.app.models.subjects import Subject
 from api.app.services.claim_support import claim_support, subject_enforcement
 from api.app.services.offender import offender_key
@@ -547,8 +547,12 @@ def assign(
     case: Case,
     staff_id: int | None,
 ) -> Case:
-    if staff_id is not None and not _staff_has_access(staff_id, workspace_id):
-        raise CasePreconditionFailed("assignee has no access to this workspace")
+    if staff_id is not None:
+        if not _staff_has_access(staff_id, workspace_id):
+            raise CasePreconditionFailed("assignee has no access to this workspace")
+        # Agency portal users are never staff assignees, even though they hold a workspace grant.
+        if _is_agency_staff(staff_id):
+            raise CasePreconditionFailed("cannot assign an agency user to a case")
     case.assigned_staff_id = staff_id
     session.flush()
     _record_event(
@@ -568,6 +572,12 @@ def assign(
         meta={"assigned_staff_id": staff_id},
     )
     return case
+
+
+def _is_agency_staff(staff_id: int) -> bool:
+    with public_session() as session:
+        staff = session.get(Staff, staff_id)
+        return staff is not None and staff.role == StaffRole.agency
 
 
 def _staff_has_access(staff_id: int, workspace_id: int) -> bool:

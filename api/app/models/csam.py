@@ -18,6 +18,8 @@ class CsamSource(enum.StrEnum):
     capture = "capture"
     manual_upload = "manual_upload"
     asset_upload = "asset_upload"
+    # Slice 12: an image embedded in an agency-uploaded "Needs from you" PDF (outsider upload).
+    portal_upload = "portal_upload"
 
 
 class CsamIncidentStatus(enum.StrEnum):

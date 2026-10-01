@@ -6,11 +6,14 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from api.app.auth.deps import get_current_staff
+from api.app.auth.deps import get_current_staff, require_role
 from api.app.db.session import public_session
 from api.app.models.public import Staff, StaffRole
 
 router = APIRouter(tags=["me"])
+
+# Review preferences are a staff (reviewer) concept; agency users have no business here.
+_STAFF_ONLY = require_role(StaffRole.admin, StaffRole.reviewer)
 
 
 class MeResponse(BaseModel):
@@ -36,7 +39,7 @@ def me(staff: Staff = Depends(get_current_staff)) -> Staff:
 
 @router.put("/me/review-prefs", response_model=ReviewPrefsOut)
 def update_review_prefs(
-    payload: ReviewPrefsIn, staff: Staff = Depends(get_current_staff)
+    payload: ReviewPrefsIn, staff: Staff = Depends(_STAFF_ONLY)
 ) -> ReviewPrefsOut:
     with public_session() as session:
         row = session.scalar(select(Staff).where(Staff.id == staff.id))

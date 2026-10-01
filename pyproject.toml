@@ -23,6 +23,9 @@ dependencies = [
     "pillow>=10.4",
     "numpy>=1.26",
     "reportlab>=4.2",
+    # Slice 12: extract embedded images from agency-uploaded PDFs so they can be CSAM-scanned
+    # before storage (pure-Python; no system libraries).
+    "pypdf>=4.2",
 ]
 
 [project.optional-dependencies]

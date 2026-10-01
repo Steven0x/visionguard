@@ -15,6 +15,7 @@ the edge ``get_tenant_session → require_workspace_access``, not from parameter
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException, Path, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -136,4 +137,55 @@ def get_tenant_session(
     workspace: Workspace = Depends(require_workspace_access),
 ) -> Iterator[Session]:
     with tenant_session(workspace.schema_name) as session:
+        yield session
+
+
+@dataclass(frozen=True)
+class AgencyContext:
+    """The authenticated agency user and the one workspace it is bound to."""
+
+    staff: Staff
+    workspace: Workspace
+
+
+def get_agency_context(staff: Staff = Depends(get_current_staff)) -> AgencyContext:
+    """Resolve an agency user's single workspace from its membership — NEVER from the URL/body.
+
+    The access grant is read fresh on every request, so revoking it (deleting the grant) takes
+    effect on the next call, not at token expiry. Requires exactly one grant and no all-workspaces
+    flag, so an agency user can only ever address its own tenant schema.
+    """
+    if staff.role != StaffRole.agency or staff.all_workspaces:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="not an agency user"
+        )
+    with public_session() as session:
+        grants = list(
+            session.scalars(
+                select(StaffWorkspaceAccess).where(
+                    StaffWorkspaceAccess.staff_id == staff.id
+                )
+            )
+        )
+        # 0 grants → revoked; >1 → misconfigured. Either way, deny (fail closed).
+        if len(grants) != 1:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="agency access is not active",
+            )
+        workspace = session.get(Workspace, grants[0].workspace_id)
+        if workspace is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="agency access is not active",
+            )
+        session.expunge(workspace)
+    return AgencyContext(staff=staff, workspace=workspace)
+
+
+def get_agency_session(
+    ctx: AgencyContext = Depends(get_agency_context),
+) -> Iterator[Session]:
+    """A tenant session bound to the agency's own workspace schema."""
+    with tenant_session(ctx.workspace.schema_name) as session:
         yield session

@@ -6,6 +6,7 @@ import {
 } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
 import { fetchMe, type Me } from "./api";
+import { AgencyPortal } from "./components/portal/AgencyPortal";
 import { WorkspaceDetail } from "./components/WorkspaceDetail";
 import { WorkspaceList } from "./components/WorkspaceList";
 import { useToken } from "./useToken";
@@ -33,6 +34,9 @@ function Console() {
 
   if (error) return <p className="text-red-600">{error}</p>;
   if (!me) return <p className="text-gray-500">Loading…</p>;
+
+  // Agency users get the customer portal and NONE of the staff console components.
+  if (me.role === "agency") return <AgencyPortal />;
 
   const isAdmin = me.role === "admin";
   return (

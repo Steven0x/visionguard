@@ -21,6 +21,10 @@ from api.app.db.base import PublicBase
 class StaffRole(enum.StrEnum):
     admin = "admin"
     reviewer = "reviewer"
+    # Slice 12: an invite-only agency (customer) user, bound to exactly one workspace via a single
+    # StaffWorkspaceAccess grant, all_workspaces=False. Sees only the /portal surface; every staff
+    # route rejects it. Excluded from staff-facing lists (assignee/approver/staff listings).
+    agency = "agency"
 
 
 class Workspace(PublicBase):

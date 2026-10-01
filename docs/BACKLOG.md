@@ -222,8 +222,34 @@ smoke script passes against a running env.
 > **Intentional gate:** staging + production cannot boot until a REAL CSAM scanner backend is
 > connected (CLAUDE.md #7) — no flag relaxes it. That is the remaining pre-production task.
 
+## Slice 12: Agency portal (first Phase-2 capability, pulled forward)
+
+- Invite-only agency users (new `agency` role), created by staff, bound to exactly one workspace;
+  MFA required; revocation effective on the next request
+- Read: their subjects, case list + statuses, case timeline (public-safe), reports (PDF download),
+  and the "Needs from you" list
+- Write (limited): submit a URL tip (→ manual intake candidate, staff-reviewed, never
+  auto-confirmed) and answer a "Needs from you" item (text or PDF, → staff review)
+- Default-deny: every staff route rejects agency (route-walk test); workspace from membership never
+  the URL (IDOR tests); minimized responses (no images for sensitive/ncii, domain-only URLs, no
+  evidence files/notes/reviewer names/costs/metrics); every action + report download audited
+- Outsider PDF uploads: embedded images CSAM-scanned (fail closed), files quarantined; per-user
+  daily tip cap; agency rows excluded from every staff-facing list
+
+**Done when:** the default-deny walk + minimization + IDOR + new-table isolation tests pass; an
+agency user sees only the portal (not the staff console) and can tip/answer/download.
+**Agents:** reviewer, red-team
+
+> **Delivered:** `agency` role on `Staff` + `get_agency_context`/`get_agency_session`
+> (membership-resolved workspace, revocation on next request); `routers/portal.py` +
+> `services/portal.py` (minimized reads, tip + needs-answer writes); `portal_submissions`
+> (`0020_tenant`, isolation test) + staff review endpoints; admin agency-user management; outsider
+> PDF embedded-image CSAM scan (`pypdf`, `CsamSource.portal_upload`, quarantine prefix); daily tip
+> cap; agency excluded from assignee/approver/staff lists; role-routed web portal. See
+> `docs/specs/portal.md`, ADR 0015.
+
 ---
 
 ## Explicitly deferred to Phase 2+
 
-Customer portal and self-review, billing, liveness and ID verification, face matching (after consent flow v2 and counsel review), platform crawlers beyond provider APIs, automated web-form submission, recovery track (demand letters, CCB), Brands mode, white-label, EU/DSA.
+Agency self-signup/billing, liveness and ID verification, face matching (after consent flow v2 and counsel review), platform crawlers beyond provider APIs, automated web-form submission, recovery track (demand letters, CCB), Brands mode, white-label, EU/DSA.
