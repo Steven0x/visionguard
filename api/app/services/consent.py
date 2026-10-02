@@ -11,6 +11,7 @@ from api.app.audit.service import record_audit
 from api.app.models.rights import ConsentRecord, ConsentType, RecordStatus
 from api.app.models.subjects import Subject
 from api.app.services.biometrics import purge_biometric_data
+from api.app.services.claim_support import biometric_features_enabled
 from api.app.services.documents import audit_upload, signed_download_url, store_document
 
 
@@ -83,6 +84,14 @@ def create_consent_record(
         entity_id=record.id,
         content_type=content_type,
     )
+    # CLAUDE.md #1: once biometric consent exists (and the subject isn't geo-blocked), backfill
+    # the CLIP embeddings that fingerprinting skipped for this subject's assets. Commit first so
+    # the worker's separate transaction — and an eager .delay() in tests — sees the new consent.
+    if type == ConsentType.biometric and biometric_features_enabled(session, subject_id):
+        from api.app.services.assets import queue_embeddings_for_subject
+
+        session.commit()
+        queue_embeddings_for_subject(session, workspace_id=workspace_id, subject_id=subject_id)
     return record
 
 

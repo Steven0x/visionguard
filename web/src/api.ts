@@ -315,6 +315,8 @@ export interface Asset {
   status: AssetStatus;
   sha256: string | null;
   phash: string | null;
+  /** A biometric-gated CLIP embedding exists. False on a ready asset → exact-match-only. */
+  has_embedding: boolean;
   duplicate_of_asset_id: number | null;
   error: string | null;
   attempts: number;

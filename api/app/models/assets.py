@@ -66,6 +66,12 @@ class Asset(TenantBase):
         nullable=False,
     )
 
+    @property
+    def has_embedding(self) -> bool:
+        """Whether a (biometric-gated) CLIP embedding exists. A ready asset without one is
+        exact-match-only — pHash + rules — because the subject lacks biometric consent."""
+        return self.embedding is not None
+
 
 class SubjectKeyword(TenantBase):
     __tablename__ = "subject_keywords"

@@ -102,6 +102,18 @@ def _has_active_biometric_consent(session: Session, subject_id: int) -> bool:
     )
 
 
+def biometric_features_enabled(session: Session, subject_id: int) -> bool:
+    """True only when the subject has active biometric consent AND is not geo-blocked (IL/WA).
+
+    Gates every biometric artifact (CLAUDE.md #1). Until counsel rules on whether general-purpose
+    CLIP image embeddings of people are biometric identifiers, we treat them AS biometric: no
+    embedding is computed or kept unless this returns True. See docs/legal/claims-matrix.md."""
+    subject = session.get(Subject, subject_id)
+    if subject is None or subject.biometrics_blocked:
+        return False
+    return _has_active_biometric_consent(session, subject_id)
+
+
 def claim_support(session: Session, subject: Subject) -> list[ClaimSupport]:
     """Which claim types the subject has the LEGAL-BASIS RECORDS to support.
 

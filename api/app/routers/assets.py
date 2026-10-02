@@ -42,6 +42,9 @@ class AssetOut(BaseModel):
     status: AssetStatus
     sha256: str | None
     phash: str | None
+    # A biometric-gated CLIP embedding exists (CLAUDE.md #1). False on a ready asset means the
+    # subject has no biometric consent, so matching is exact-match-only (pHash + rules).
+    has_embedding: bool
     duplicate_of_asset_id: int | None
     error: str | None
     attempts: int
