@@ -12,6 +12,7 @@ import {
   sendNotice,
   withdrawNotice,
 } from "../api";
+import { errorText } from "../errors";
 import { useToken } from "../useToken";
 
 // The concierge files through these platforms (see ops/RUNBOOK_day1.md).
@@ -44,7 +45,7 @@ export function NoticeSection({
     try {
       setDetail(await getNotice(await getToken(), workspaceId, caseId));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }, [getToken, workspaceId, caseId]);
 
@@ -60,7 +61,7 @@ export function NoticeSection({
       await fn();
       await reload();
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -75,7 +76,7 @@ export function NoticeSection({
 
       {!notice && (
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-gray-500">Draft a notice for:</span>
+          <span className="text-fg-muted">Draft a notice for:</span>
           <select
             className="border p-1"
             value={platform}
@@ -89,7 +90,7 @@ export function NoticeSection({
           </select>
           <button
             disabled={busy}
-            className="rounded bg-blue-700 px-2 py-1 text-white disabled:opacity-50"
+            className="rounded bg-primary px-2 py-1 text-white disabled:opacity-50"
             onClick={() =>
               act(async () => createNoticeDraft(await getToken(), workspaceId, caseId, platform))
             }
@@ -102,16 +103,16 @@ export function NoticeSection({
       {notice && detail && (
         <div className="space-y-2 text-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">
+            <span className="rounded bg-surface-muted px-2 py-0.5 text-xs">
               {notice.platform} · {notice.method} · {notice.status}
             </span>
             {notice.approved_at ? (
               <span className="text-xs text-green-700">approved ✓</span>
             ) : (
-              <span className="text-xs text-gray-500">not yet approved</span>
+              <span className="text-xs text-fg-muted">not yet approved</span>
             )}
             {notice.sealed_capture_id && (
-              <span className="text-xs text-gray-500">sealed #{notice.sealed_capture_id}</span>
+              <span className="text-xs text-fg-muted">sealed #{notice.sealed_capture_id}</span>
             )}
           </div>
 
@@ -139,7 +140,7 @@ export function NoticeSection({
           {notice.status === "draft" && (
             <div className="flex flex-wrap items-center gap-2">
               {notice.claim_type === "copyright" && (
-                <label className="flex items-center gap-1 text-xs text-gray-600">
+                <label className="flex items-center gap-1 text-xs text-fg-muted">
                   <input
                     type="checkbox"
                     checked={fairUse}
@@ -217,13 +218,13 @@ export function NoticeSection({
           )}
 
           {packet && notice.method !== "email" && (
-            <div className="rounded border border-gray-200 p-2 text-xs">
+            <div className="rounded border border-line p-2 text-xs">
               <div className="font-medium">Copy-ready packet — submit at:</div>
-              <a href={packet.destination} target="_blank" rel="noopener noreferrer" className="text-blue-700">
+              <a href={packet.destination} target="_blank" rel="noopener noreferrer" className="text-primary">
                 {packet.destination}
               </a>
               <pre className="mt-1 whitespace-pre-wrap">{`${packet.subject}\n\n${packet.body}`}</pre>
-              <div className="mt-1 text-gray-500">{packet.instructions}</div>
+              <div className="mt-1 text-fg-muted">{packet.instructions}</div>
             </div>
           )}
         </div>
@@ -266,12 +267,12 @@ function DraftEditor({
       <div className="flex items-center gap-2">
         <button
           disabled={busy}
-          className="rounded bg-blue-700 px-2 py-1 text-xs text-white disabled:opacity-50"
+          className="rounded bg-primary px-2 py-1 text-xs text-white disabled:opacity-50"
           onClick={() => onSave(subject, body)}
         >
           Save version
         </button>
-        <span className="text-xs text-gray-400">v{detail.notice?.current_version}</span>
+        <span className="text-xs text-fg-muted">v{detail.notice?.current_version}</span>
       </div>
     </div>
   );

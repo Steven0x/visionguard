@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { commitImport, previewImport, type PreviewResponse } from "../api";
+import { errorText } from "../errors";
 import { useToken } from "../useToken";
 import { ImportPreviewTable } from "./ImportPreviewTable";
 
@@ -23,7 +24,7 @@ export function SubjectImport({
     try {
       setPreview(await previewImport(await getToken(), workspaceId, file));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
       setPreview(null);
     } finally {
       setBusy(false);
@@ -41,16 +42,16 @@ export function SubjectImport({
       onImported();
       window.alert(`Imported ${result.imported} subjects`);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="space-y-2 rounded border border-gray-200 p-3">
+    <div className="space-y-2 rounded border border-line p-3">
       <h4 className="font-medium">CSV import</h4>
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-fg-muted">
         Columns: legal_name, stage_names, handles, residence_state, notes
         (stage_names/handles are ;-separated).
       </p>

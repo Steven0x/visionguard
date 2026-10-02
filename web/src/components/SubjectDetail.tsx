@@ -18,6 +18,7 @@ import {
   revokeRights,
   rightsFileUrl,
 } from "../api";
+import { errorText } from "../errors";
 import { useToken } from "../useToken";
 import { AssetsSection } from "./AssetsSection";
 import { ClaimSupportPanel } from "./ClaimSupportPanel";
@@ -72,7 +73,7 @@ export function SubjectDetail({
       setSubjectAuths(await listSubjectAuthorizations(t, workspaceId, subjectId));
       setWorkspaceAuths(await listWorkspaceAuthorizations(t, workspaceId));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }, [getToken, workspaceId, subjectId]);
 
@@ -86,7 +87,7 @@ export function SubjectDetail({
       await fn();
       await reload();
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   };
 
@@ -97,7 +98,7 @@ export function SubjectDetail({
 
   return (
     <div className="space-y-6">
-      <button className="text-sm text-blue-700" onClick={onBack}>
+      <button className="text-sm text-primary" onClick={onBack}>
         ← Subjects
       </button>
       <h2 className="text-xl font-semibold">{subjectName}</h2>
@@ -113,12 +114,12 @@ export function SubjectDetail({
         <h3 className="font-medium">Rights records</h3>
         <ul className="text-sm">
           {rights.map((r) => (
-            <li key={r.id} className="flex items-center gap-2 border-t border-gray-100 py-1">
+            <li key={r.id} className="flex items-center gap-2 border-t border-line py-1">
               <span className="font-mono">{r.type}</span>
               {r.grants_enforcement_right && <span className="text-green-700">✓enf</span>}
-              <span className="text-gray-500">{r.status}</span>
-              {r.expires_on && <span className="text-gray-400">exp {r.expires_on}</span>}
-              <button className="text-blue-700" onClick={() => void openDownload(r.id)}>
+              <span className="text-fg-muted">{r.status}</span>
+              {r.expires_on && <span className="text-fg-muted">exp {r.expires_on}</span>}
+              <button className="text-primary" onClick={() => void openDownload(r.id)}>
                 file
               </button>
               {isAdmin && r.status === "active" && (
@@ -155,7 +156,7 @@ export function SubjectDetail({
           </label>
           <input name="expires_on" type="date" className="border p-1" />
           <input name="file" type="file" accept=".pdf,.png,.jpg,.jpeg" required />
-          <button className="rounded bg-blue-700 px-2 py-1 text-white">Add rights</button>
+          <button className="rounded bg-primary px-2 py-1 text-white">Add rights</button>
         </form>
       </section>
 
@@ -164,11 +165,11 @@ export function SubjectDetail({
         <h3 className="font-medium">Consent records</h3>
         <ul className="text-sm">
           {consent.map((c) => (
-            <li key={c.id} className="flex items-center gap-2 border-t border-gray-100 py-1">
+            <li key={c.id} className="flex items-center gap-2 border-t border-line py-1">
               <span className="font-mono">{c.type}</span>
               <span>{c.signer_name}</span>
-              <span className="text-gray-400">{c.signed_date}</span>
-              <span className="text-gray-500">{c.status}</span>
+              <span className="text-fg-muted">{c.signed_date}</span>
+              <span className="text-fg-muted">{c.status}</span>
               {isAdmin && c.status === "active" && (
                 <button
                   className="text-red-700"
@@ -198,7 +199,7 @@ export function SubjectDetail({
           <input name="signer_name" placeholder="Signer" required className="border p-1" />
           <input name="signed_date" type="date" required className="border p-1" />
           <input name="file" type="file" accept=".pdf,.png,.jpg,.jpeg" required />
-          <button className="rounded bg-blue-700 px-2 py-1 text-white">Add consent</button>
+          <button className="rounded bg-primary px-2 py-1 text-white">Add consent</button>
         </form>
       </section>
 
@@ -208,11 +209,11 @@ export function SubjectDetail({
           <h3 className="font-medium">Agent authorizations</h3>
           <ul className="text-sm">
             {[...subjectAuths, ...workspaceAuths].map((a) => (
-              <li key={a.id} className="flex items-center gap-2 border-t border-gray-100 py-1">
+              <li key={a.id} className="flex items-center gap-2 border-t border-line py-1">
                 <span>{a.subject_id === null ? "workspace" : "subject"}</span>
                 <span>{a.signer_name}</span>
-                <span className="text-gray-400">{a.authorized_date}</span>
-                <span className="text-gray-500">{a.status}</span>
+                <span className="text-fg-muted">{a.authorized_date}</span>
+                <span className="text-fg-muted">{a.status}</span>
                 {a.status === "active" && (
                   <button
                     className="text-red-700"

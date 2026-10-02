@@ -1,0 +1,124 @@
+<!doctype html>
+<!-- Slice 14 — Direction B: "Focus". Dense, high-contrast, keyboard-first tool. Teal accent,
+     zinc neutrals, 4px radius, hairline borders, mono IDs/scores. Throwaway mockup (Tailwind CDN). -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VisionGuard — Direction B (Focus)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: {
+    fontFamily: { sans: ['IBM Plex Sans','system-ui','sans-serif'], mono: ['IBM Plex Mono','ui-monospace','monospace'] },
+    colors: { brand: { 400:'#2dd4bf',500:'#14b8a6',600:'#0d9488',700:'#0f766e' } },
+  } }
+}
+</script>
+<style>
+  body{font-family:'IBM Plex Sans',system-ui,sans-serif}
+  .mono{font-family:'IBM Plex Mono',monospace}
+  .st{font-size:10px;font-weight:600;letter-spacing:.02em;padding:1px 6px;border-radius:3px;text-transform:uppercase}
+  .kbd{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:1px 5px;border-radius:3px}
+</style>
+</head>
+<body class="bg-zinc-100 text-zinc-900">
+<div class="mx-auto max-w-6xl p-8 space-y-10">
+  <header class="space-y-1">
+    <h1 class="text-2xl font-bold tracking-tight">Direction B — “Focus”</h1>
+    <p class="text-sm text-zinc-500">Teal accent · zinc neutrals · 4px radius · hairline borders · IBM Plex Sans/Mono · dense rows. Keyboard-first.</p>
+  </header>
+
+  <!-- ===================== LIGHT ===================== -->
+  <section class="grid grid-cols-2 gap-6">
+    <!-- Review inbox -->
+    <div class="rounded border border-zinc-300 bg-white overflow-hidden">
+      <div class="flex items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-2">
+        <h2 class="text-xs font-bold uppercase tracking-wide text-zinc-700">Review inbox</h2>
+        <span class="mono rounded bg-zinc-900 px-1.5 text-xs font-medium text-white">21</span>
+        <div class="ml-auto flex items-center gap-1.5 text-[11px] text-zinc-500">
+          <span class="kbd bg-zinc-200 text-zinc-700">J</span><span class="kbd bg-zinc-200 text-zinc-700">K</span>move
+          <span class="kbd bg-emerald-600 text-white">C</span>confirm
+          <span class="kbd bg-zinc-700 text-white">D</span>dismiss
+        </div>
+      </div>
+      <ul>
+        <li class="flex gap-2.5 border-l-2 border-brand-500 bg-brand-500/5 px-3 py-2">
+          <div class="flex gap-1"><div class="h-14 w-14 rounded bg-gradient-to-br from-emerald-300 to-emerald-500"></div><div class="h-14 w-14 rounded bg-zinc-800 blur-[5px]"></div></div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2"><span class="text-sm font-semibold">Demo Subject</span><span class="mono text-[11px] text-zinc-400">google_lens</span><span class="st bg-amber-500/15 text-amber-700 mono">0.82</span></div>
+            <a class="mono mt-0.5 block truncate text-[11px] text-brand-700">leaks.example/demostar/gallery</a>
+          </div>
+          <div class="w-40 space-y-1"><select class="w-full rounded border-zinc-300 py-1 text-xs"><option>likeness ·sug</option></select><div class="flex gap-1"><button class="flex-1 rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Confirm</button><button class="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700">Dismiss</button></div></div>
+        </li>
+        <li class="flex gap-2.5 border-l-2 border-transparent px-3 py-2">
+          <div class="flex gap-1"><div class="h-14 w-14 rounded bg-gradient-to-br from-sky-300 to-indigo-400"></div><div class="h-14 w-14 rounded bg-zinc-700 blur-[5px]"></div></div>
+          <div class="min-w-0 flex-1"><div class="flex items-center gap-2"><span class="text-sm font-semibold">Demo Subject</span><span class="mono text-[11px] text-zinc-400">tineye</span><span class="st bg-zinc-200 text-zinc-600 mono">0.56</span></div><a class="mono mt-0.5 block truncate text-[11px] text-brand-700">randomblog.example/post/demo-star</a></div>
+          <div class="w-40 space-y-1"><select class="w-full rounded border-zinc-300 py-1 text-xs"><option>copyright ·sug</option></select><div class="flex gap-1"><button class="flex-1 rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Confirm</button><button class="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700">Dismiss</button></div></div>
+        </li>
+        <li class="flex gap-2.5 border-l-2 border-transparent px-3 py-2">
+          <div class="flex gap-1"><div class="h-14 w-14 rounded bg-gradient-to-br from-rose-300 to-pink-500"></div><div class="h-14 w-14 rounded bg-zinc-700 blur-[5px]"></div></div>
+          <div class="min-w-0 flex-1"><div class="flex items-center gap-2"><span class="text-sm font-semibold">Demo Subject</span><span class="mono text-[11px] text-zinc-400">google_lens</span><span class="st bg-rose-500/15 text-rose-700 mono">0.91</span></div><a class="mono mt-0.5 block truncate text-[11px] text-brand-700">leaks.example/demostar/set-2</a></div>
+          <div class="w-40 space-y-1"><select class="w-full rounded border-zinc-300 py-1 text-xs"><option>likeness ·sug</option></select><div class="flex gap-1"><button class="flex-1 rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Confirm</button><button class="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700">Dismiss</button></div></div>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Portal case list -->
+    <div class="rounded border border-zinc-300 bg-white overflow-hidden">
+      <div class="flex items-center gap-2.5 border-b border-zinc-200 px-4 py-3">
+        <div class="flex h-7 w-7 items-center justify-center rounded bg-zinc-900 text-sm font-bold text-brand-400">V</div>
+        <div class="text-sm font-bold tracking-tight">VISIONGUARD</div>
+        <span class="ml-auto text-xs text-zinc-400">Demo Agency</span>
+      </div>
+      <nav class="flex gap-0 border-b border-zinc-200 text-xs font-medium">
+        <a class="border-b-2 border-brand-600 px-4 py-2.5 font-bold text-brand-700">Cases</a>
+        <a class="px-4 py-2.5 text-zinc-500">Subjects</a><a class="px-4 py-2.5 text-zinc-500">Needs</a>
+        <a class="px-4 py-2.5 text-zinc-500">Reports</a><a class="px-4 py-2.5 text-zinc-500">Billing</a>
+      </nav>
+      <table class="w-full text-sm">
+        <tbody>
+          <tr class="border-b border-zinc-100"><td class="px-4 py-2.5"><a class="mono font-semibold text-brand-700">#3</a></td><td class="px-2 text-xs text-zinc-500">copyright</td><td class="px-2 text-right"><span class="st bg-zinc-200 text-zinc-600">withdrawn</span></td></tr>
+          <tr class="border-b border-zinc-100"><td class="px-4 py-2.5"><a class="mono font-semibold text-brand-700">#2</a></td><td class="px-2 text-xs text-zinc-500">copyright <span class="text-zinc-400">· leaks.example</span></td><td class="px-2 text-right"><span class="st bg-blue-500/15 text-blue-700">filed</span></td></tr>
+          <tr><td class="px-4 py-2.5"><a class="mono font-semibold text-brand-700">#1</a></td><td class="px-2 text-xs text-zinc-500">copyright</td><td class="px-2 text-right"><span class="st bg-emerald-500/15 text-emerald-700">removed</span></td></tr>
+        </tbody>
+      </table>
+      <div class="border-t border-zinc-100 px-4 py-3"><button class="rounded bg-brand-600 px-3 py-1.5 text-xs font-bold text-white">Submit a URL tip</button></div>
+    </div>
+  </section>
+
+  <!-- ===================== DARK ===================== -->
+  <div class="dark">
+  <section class="grid grid-cols-2 gap-6 rounded-lg bg-black p-6">
+    <div class="rounded border border-zinc-800 bg-zinc-900 overflow-hidden">
+      <div class="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/60 px-3 py-2">
+        <h2 class="text-xs font-bold uppercase tracking-wide text-zinc-300">Review inbox</h2>
+        <span class="mono rounded bg-brand-500 px-1.5 text-xs font-medium text-black">21</span>
+        <div class="ml-auto flex items-center gap-1.5 text-[11px] text-zinc-500"><span class="kbd bg-zinc-800 text-zinc-300">J</span><span class="kbd bg-zinc-800 text-zinc-300">K</span>move <span class="kbd bg-emerald-500 text-black">C</span>confirm <span class="kbd bg-zinc-700 text-zinc-100">D</span>dismiss</div>
+      </div>
+      <ul>
+        <li class="flex gap-2.5 border-l-2 border-brand-500 bg-brand-500/10 px-3 py-2">
+          <div class="flex gap-1"><div class="h-14 w-14 rounded bg-gradient-to-br from-emerald-300 to-emerald-500"></div><div class="h-14 w-14 rounded bg-black blur-[5px]"></div></div>
+          <div class="min-w-0 flex-1"><div class="flex items-center gap-2"><span class="text-sm font-semibold text-zinc-100">Demo Subject</span><span class="mono text-[11px] text-zinc-500">google_lens</span><span class="st bg-amber-400/15 text-amber-300 mono">0.82</span></div><a class="mono mt-0.5 block truncate text-[11px] text-brand-400">leaks.example/demostar/gallery</a></div>
+          <div class="w-40 space-y-1"><select class="w-full rounded border-0 bg-zinc-800 py-1 text-xs text-zinc-200 ring-1 ring-zinc-700"><option>likeness ·sug</option></select><div class="flex gap-1"><button class="flex-1 rounded bg-emerald-500 px-2 py-1 text-xs font-bold text-black">Confirm</button><button class="rounded border border-zinc-700 px-2 py-1 text-xs font-medium text-zinc-200">Dismiss</button></div></div>
+        </li>
+        <li class="flex gap-2.5 border-l-2 border-transparent px-3 py-2"><div class="flex gap-1"><div class="h-14 w-14 rounded bg-gradient-to-br from-sky-300 to-indigo-400"></div><div class="h-14 w-14 rounded bg-black blur-[5px]"></div></div><div class="min-w-0 flex-1"><div class="flex items-center gap-2"><span class="text-sm font-semibold text-zinc-100">Demo Subject</span><span class="mono text-[11px] text-zinc-500">tineye</span><span class="st bg-zinc-700 text-zinc-300 mono">0.56</span></div><a class="mono mt-0.5 block truncate text-[11px] text-brand-400">randomblog.example/post/demo-star</a></div><div class="w-40 space-y-1"><select class="w-full rounded border-0 bg-zinc-800 py-1 text-xs text-zinc-200 ring-1 ring-zinc-700"><option>copyright ·sug</option></select><div class="flex gap-1"><button class="flex-1 rounded bg-emerald-500 px-2 py-1 text-xs font-bold text-black">Confirm</button><button class="rounded border border-zinc-700 px-2 py-1 text-xs font-medium text-zinc-200">Dismiss</button></div></div></li>
+      </ul>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900 overflow-hidden">
+      <div class="flex items-center gap-2.5 border-b border-zinc-800 px-4 py-3"><div class="flex h-7 w-7 items-center justify-center rounded bg-black text-sm font-bold text-brand-400">V</div><div class="text-sm font-bold tracking-tight text-zinc-100">VISIONGUARD</div><span class="ml-auto text-xs text-zinc-500">Demo Agency</span></div>
+      <nav class="flex border-b border-zinc-800 text-xs font-medium"><a class="border-b-2 border-brand-500 px-4 py-2.5 font-bold text-brand-400">Cases</a><a class="px-4 py-2.5 text-zinc-500">Subjects</a><a class="px-4 py-2.5 text-zinc-500">Needs</a><a class="px-4 py-2.5 text-zinc-500">Reports</a><a class="px-4 py-2.5 text-zinc-500">Billing</a></nav>
+      <table class="w-full text-sm"><tbody>
+        <tr class="border-b border-zinc-800"><td class="px-4 py-2.5"><a class="mono font-semibold text-brand-400">#3</a></td><td class="px-2 text-xs text-zinc-500">copyright</td><td class="px-2 text-right"><span class="st bg-zinc-700 text-zinc-300">withdrawn</span></td></tr>
+        <tr class="border-b border-zinc-800"><td class="px-4 py-2.5"><a class="mono font-semibold text-brand-400">#2</a></td><td class="px-2 text-xs text-zinc-500">copyright</td><td class="px-2 text-right"><span class="st bg-blue-400/15 text-blue-300">filed</span></td></tr>
+        <tr><td class="px-4 py-2.5"><a class="mono font-semibold text-brand-400">#1</a></td><td class="px-2 text-xs text-zinc-500">copyright</td><td class="px-2 text-right"><span class="st bg-emerald-400/15 text-emerald-300">removed</span></td></tr>
+      </tbody></table>
+    </div>
+  </section>
+  </div>
+</div>
+</body>
+</html>

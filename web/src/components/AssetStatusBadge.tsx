@@ -1,19 +1,17 @@
 import type { AssetStatus } from "../api";
+import { Badge, type Tone } from "./ui";
 
-const STYLES: Record<AssetStatus, string> = {
-  pending: "bg-gray-100 text-gray-700",
-  processing: "bg-blue-100 text-blue-700",
-  ready: "bg-green-100 text-green-700",
-  failed: "bg-red-100 text-red-700",
+const TONE: Record<AssetStatus, Tone> = {
+  pending: "gray",
+  processing: "blue",
+  ready: "green",
+  failed: "red",
 };
 
 export function AssetStatusBadge({ status }: { status: AssetStatus }) {
   return (
-    <span
-      data-testid="asset-status"
-      className={`rounded px-2 py-0.5 text-xs ${STYLES[status]}`}
-    >
+    <Badge tone={TONE[status]} data-testid="asset-status">
       {status}
-    </span>
+    </Badge>
   );
 }

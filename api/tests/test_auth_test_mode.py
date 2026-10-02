@@ -8,10 +8,15 @@ from pydantic import ValidationError
 from api.app.config import Settings
 
 
-def test_refuses_test_mode_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APP_ENV", "production")
+@pytest.mark.parametrize("app_env", ["staging", "production"])
+def test_refuses_test_mode_in_deployed_envs(
+    app_env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The Clerk bypass must be refused in BOTH deployed envs, not just production — the auth
+    # guard runs first in the validator, so this pins the failure to AUTH_TEST_MODE specifically.
+    monkeypatch.setenv("APP_ENV", app_env)
     monkeypatch.setenv("AUTH_TEST_MODE", "1")
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="AUTH_TEST_MODE"):
         Settings()
 
 

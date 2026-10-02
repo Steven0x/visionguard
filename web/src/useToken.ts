@@ -1,6 +1,12 @@
 import { useAuth } from "@clerk/clerk-react";
 import { useCallback } from "react";
 
+/** Dev-only capture mode (Slice 14 screenshots). When VITE_DEV_AUTH=1 the app skips Clerk and
+ * uses a pre-minted AUTH_TEST_MODE token injected into localStorage by the Playwright capture
+ * script. The flag is unset in every real build, so this branch is dead in prod. See
+ * scripts/design_capture.py. */
+const DEV_AUTH = import.meta.env.VITE_DEV_AUTH === "1";
+
 /** Returns a getter for the current Clerk session token (throws if signed out).
  *
  * Memoized with useCallback so its identity is STABLE across renders. It's used in the
@@ -10,6 +16,11 @@ import { useCallback } from "react";
 export function useToken(): () => Promise<string> {
   const { getToken } = useAuth();
   return useCallback(async () => {
+    if (DEV_AUTH) {
+      const token = localStorage.getItem("vg_dev_token");
+      if (!token) throw new Error("no dev token (VITE_DEV_AUTH capture mode)");
+      return token;
+    }
     const token = await getToken();
     if (!token) throw new Error("no session token");
     return token;

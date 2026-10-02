@@ -2,7 +2,9 @@ import { ClerkProvider } from "@clerk/clerk-react";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { ToastProvider } from "./components/ui";
 import "./index.css";
+import { initTheme } from "./theme";
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -10,10 +12,14 @@ if (!publishableKey) {
   throw new Error("VITE_CLERK_PUBLISHABLE_KEY is not set");
 }
 
+initTheme();
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ClerkProvider publishableKey={publishableKey}>
-      <App />
+      <ToastProvider>
+        <App />
+      </ToastProvider>
     </ClerkProvider>
   </React.StrictMode>,
 );

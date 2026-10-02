@@ -37,11 +37,10 @@ describe("App", () => {
 
   it("shows the signed-in staff member and the workspaces console", async () => {
     render(<App />);
-    expect(screen.getByRole("heading", { name: "VisionGuard" })).toBeInTheDocument();
-    expect(
-      await screen.findByText(/staff@visionguard.test \(admin\)/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("staff@visionguard.test")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Workspaces" })).toBeInTheDocument();
+    // Brand wordmark is part of the app shell (rendered once me has loaded).
+    expect(screen.getAllByText("VisionGuard").length).toBeGreaterThan(0);
   });
 
   it("fetches /me exactly once on mount (no render loop)", async () => {

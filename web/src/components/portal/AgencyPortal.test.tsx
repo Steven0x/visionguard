@@ -77,9 +77,9 @@ describe("AgencyPortal routing", () => {
 
   it("renders the portal for an agency user and not the staff console", async () => {
     render(<App />);
-    expect(await screen.findByText("Acme Talent — signed in as agency@client.test")).toBeInTheDocument();
+    expect(await screen.findByText("Acme Talent")).toBeInTheDocument();
     // Portal chrome is present…
-    expect(screen.getByRole("button", { name: "Needs from you" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Needs from you" })).toBeInTheDocument();
     // …and the staff console ("Workspaces") is not.
     expect(screen.queryByRole("heading", { name: "Workspaces" })).not.toBeInTheDocument();
     const api = await import("../../api");
@@ -94,8 +94,8 @@ describe("AgencyPortal routing", () => {
 
   it("hides billing actions from a non-contact agency user", async () => {
     render(<App />);
-    await screen.findByText("Acme Talent — signed in as agency@client.test");
-    fireEvent.click(screen.getByRole("button", { name: "Billing" }));
+    await screen.findByText("Acme Talent");
+    fireEvent.click(screen.getByRole("tab", { name: "Billing" }));
     expect(
       await screen.findByText("contact@client.test manages billing for this workspace."),
     ).toBeInTheDocument();
@@ -121,8 +121,8 @@ describe("AgencyPortal routing", () => {
       billing_contact_email: "agency@client.test",
     });
     render(<App />);
-    await screen.findByText("Acme Talent — signed in as agency@client.test");
-    fireEvent.click(screen.getByRole("button", { name: "Billing" }));
+    await screen.findByText("Acme Talent");
+    fireEvent.click(screen.getByRole("tab", { name: "Billing" }));
     expect(
       await screen.findByRole("button", { name: "Manage billing (card, ACH, invoices)" }),
     ).toBeInTheDocument();

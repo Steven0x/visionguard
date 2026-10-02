@@ -1,17 +1,18 @@
 import type { DiscoveryRun } from "../api";
+import { Badge, type Tone } from "./ui";
 
-const STYLES: Record<DiscoveryRun["status"], string> = {
-  running: "bg-blue-100 text-blue-700",
-  completed: "bg-green-100 text-green-700",
-  partial: "bg-amber-100 text-amber-800",
-  blocked: "bg-red-100 text-red-700",
-  failed: "bg-red-100 text-red-700",
+const TONE: Record<DiscoveryRun["status"], Tone> = {
+  running: "blue",
+  completed: "green",
+  partial: "amber",
+  blocked: "red",
+  failed: "red",
 };
 
 export function RunStatusBadge({ status }: { status: DiscoveryRun["status"] }) {
   return (
-    <span data-testid="run-status" className={`rounded px-2 py-0.5 text-xs ${STYLES[status]}`}>
+    <Badge tone={TONE[status]} data-testid="run-status">
       {status}
-    </span>
+    </Badge>
   );
 }

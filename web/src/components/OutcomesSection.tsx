@@ -11,6 +11,7 @@ import {
   reopenCase,
   transitionCase,
 } from "../api";
+import { errorText } from "../errors";
 import { useToken } from "../useToken";
 
 const OUTCOMES: { value: OutcomeKind; label: string; hint: string }[] = [
@@ -43,7 +44,7 @@ export function OutcomesSection({
       setDetail(await getOutcomes(t, workspaceId, caseId));
       setRechecks(await listRechecks(t, workspaceId, caseId));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }, [getToken, workspaceId, caseId]);
 
@@ -60,7 +61,7 @@ export function OutcomesSection({
       await reload();
       onChanged();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -175,7 +176,7 @@ export function OutcomesSection({
       {/* After a rejection, the next move is escalate (re-file) or withdraw — via the case
           transition buttons above; this just reminds staff. */}
       {detail?.effective_outcome === "rejected" && caseStatus === "filed" && (
-        <p className="rounded bg-gray-50 p-2 text-xs text-gray-600">
+        <p className="rounded bg-surface-muted p-2 text-xs text-fg-muted">
           Rejected by the platform. Next: escalate (re-file) or withdraw using the case
           transitions above.
         </p>
@@ -185,12 +186,12 @@ export function OutcomesSection({
       {detail && detail.outcomes.length > 0 && (
         <ul className="space-y-1 text-xs">
           {detail.outcomes.map((o) => (
-            <li key={o.id} className="border-t border-gray-100 py-1">
+            <li key={o.id} className="border-t border-line py-1">
               <span className="font-medium">{o.outcome}</span>{" "}
-              <span className="text-gray-500">effective {o.effective_at}</span>{" "}
-              <span className="text-gray-400">({o.source})</span>
-              {o.supersedes_id && <span className="text-gray-400"> — corrects #{o.supersedes_id}</span>}
-              {o.note && <span className="text-gray-600"> — {o.note}</span>}
+              <span className="text-fg-muted">effective {o.effective_at}</span>{" "}
+              <span className="text-fg-muted">({o.source})</span>
+              {o.supersedes_id && <span className="text-fg-muted"> — corrects #{o.supersedes_id}</span>}
+              {o.note && <span className="text-fg-muted"> — {o.note}</span>}
             </li>
           ))}
         </ul>
@@ -198,12 +199,12 @@ export function OutcomesSection({
 
       {/* Re-check history. */}
       {rechecks.length > 0 && (
-        <details className="text-xs text-gray-600">
+        <details className="text-xs text-fg-muted">
           <summary>URL re-checks ({rechecks.length})</summary>
           <ul className="mt-1 space-y-0.5">
             {rechecks.map((r) => (
               <li key={r.id}>
-                <span className="text-gray-400">{r.created_at.slice(0, 19).replace("T", " ")}</span>{" "}
+                <span className="text-fg-muted">{r.created_at.slice(0, 19).replace("T", " ")}</span>{" "}
                 <span className="font-mono">{r.result}</span>
                 {r.http_status != null && <span> ({r.http_status})</span>}
               </li>
