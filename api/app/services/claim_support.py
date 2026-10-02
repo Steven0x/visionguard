@@ -102,16 +102,33 @@ def _has_active_biometric_consent(session: Session, subject_id: int) -> bool:
     )
 
 
-def biometric_features_enabled(session: Session, subject_id: int) -> bool:
+def biometric_features_enabled(
+    session: Session, subject_id: int, *, for_update: bool = False
+) -> bool:
     """True only when the subject has active biometric consent AND is not geo-blocked (IL/WA).
 
     Gates every biometric artifact (CLAUDE.md #1). Until counsel rules on whether general-purpose
     CLIP image embeddings of people are biometric identifiers, we treat them AS biometric: no
-    embedding is computed or kept unless this returns True. See docs/legal/claims-matrix.md."""
+    embedding is computed or kept unless this returns True. See docs/legal/claims-matrix.md.
+
+    ``for_update=True`` takes a ``FOR UPDATE`` row lock on the active biometric consent so a
+    concurrent revocation (which UPDATEs that row, then purges) serializes against an embedding
+    write — closing the TOCTOU where an embedding could be written just after a purge."""
     subject = session.get(Subject, subject_id)
     if subject is None or subject.biometrics_blocked:
         return False
-    return _has_active_biometric_consent(session, subject_id)
+    stmt = (
+        select(ConsentRecord.id)
+        .where(
+            ConsentRecord.subject_id == subject_id,
+            ConsentRecord.type == ConsentType.biometric,
+            ConsentRecord.status == RecordStatus.active,
+        )
+        .limit(1)
+    )
+    if for_update:
+        stmt = stmt.with_for_update()
+    return session.scalar(stmt) is not None
 
 
 def claim_support(session: Session, subject: Subject) -> list[ClaimSupport]:

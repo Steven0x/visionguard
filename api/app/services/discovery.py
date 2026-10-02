@@ -29,7 +29,10 @@ from api.app.models.subjects import Subject
 from api.app.net.fetcher import Fetcher, get_fetcher
 from api.app.net.ssrf import SsrfError
 from api.app.services import billing as billing_svc
-from api.app.services.claim_support import subject_enforcement
+from api.app.services.claim_support import (
+    biometric_features_enabled,
+    subject_enforcement,
+)
 from api.app.services.csam_incidents import record_incident
 from api.app.services.scoring import apply_scoring
 from api.app.storage import get_storage
@@ -317,6 +320,11 @@ def add_image_candidate(
     thumbnail_key = object_key(schema, "candidate_thumbnail", "image/jpeg")
     get_storage().put_object(thumbnail_key, thumbnail, "image/jpeg")
 
+    # A found image is a reverse-search hit for this subject, so a CLIP embedding of it is
+    # subject-associated biometric data (CLAUDE.md #1) — treated as biometric until counsel rules.
+    # Only embed when the subject has active biometric consent and isn't geo-blocked; otherwise
+    # the candidate is pHash-only (matching still works via pHash + rules). See the claims matrix.
+    wants_embedding = biometric_features_enabled(session, subject_id)
     candidate = DiscoveryCandidate(
         subject_id=subject_id,
         run_id=run_id,
@@ -329,7 +337,7 @@ def add_image_candidate(
         title=title,
         sha256=sha256_hex(result.content),
         phash=phash_hex(image),
-        embedding=get_embedder().embed(result.content),
+        embedding=get_embedder().embed(result.content) if wants_embedding else None,
         thumbnail_key=thumbnail_key,
         content_type=result.content_type,
     )

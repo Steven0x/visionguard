@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from sqlalchemy import func, select
 from worker.discovery import keyword_scan, reverse_image_scan
 
@@ -13,11 +15,28 @@ from api.app.models.discovery import (
     RunKind,
     RunStatus,
 )
+from api.app.models.rights import ConsentRecord, ConsentType, RecordStatus
+from api.app.models.subjects import Subject
 from api.tests.discohelpers import authorized_subject
+
+
+def _grant_biometrics(schema: str, subject_id: int) -> None:
+    with tenant_session(schema) as s:
+        subject = s.get(Subject, subject_id)
+        assert subject is not None
+        subject.biometrics_blocked = False
+        s.add(
+            ConsentRecord(
+                subject_id=subject_id, type=ConsentType.biometric, file_key="k",
+                file_name="c.pdf", content_type="application/pdf", signer_name="x",
+                signed_date=date(2026, 1, 1), status=RecordStatus.active,
+            )
+        )
 
 
 def test_reverse_scan_stores_fingerprints_and_thumbnail(db, new_workspace):
     sid, aid = authorized_subject(new_workspace.schema_name, ready_asset=True)
+    _grant_biometrics(new_workspace.schema_name, sid)  # embedding is biometric-gated (CLAUDE.md #1)
     assert reverse_image_scan.run(new_workspace.id, sid, aid) == "completed"
 
     with tenant_session(new_workspace.schema_name) as s:
