@@ -59,7 +59,8 @@ def reprocess_asset(workspace_id: int, asset_id: int) -> str:
             asset.phash = phash
             asset.embedding = (
                 embedding
-                if embedding is not None and biometric_features_enabled(session, subject_id)
+                if embedding is not None
+                and biometric_features_enabled(session, subject_id, for_update=True)
                 else None
             )
             asset.error = None
@@ -97,7 +98,8 @@ def embed_asset(workspace_id: int, asset_id: int) -> str:
         asset = session.get(Asset, asset_id)
         if asset is None:
             return "missing"
-        if not biometric_features_enabled(session, subject_id):  # revoked mid-compute
+        # Lock the consent row so a concurrent revoke+purge can't be lost (TOCTOU).
+        if not biometric_features_enabled(session, subject_id, for_update=True):
             return "no_consent"
         asset.embedding = embedding
     return "embedded"
@@ -144,10 +146,12 @@ def fingerprint_asset(workspace_id: int, asset_id: int) -> str:
                 return "stale"
             asset.sha256 = digest
             asset.phash = phash
-            # Re-check consent inside this txn so a revoke during compute can't leave an embedding.
+            # Re-check consent (row-locked) inside this txn so a revoke during compute can't leave
+            # an embedding behind (TOCTOU against revoke_consent's purge).
             asset.embedding = (
                 embedding
-                if embedding is not None and biometric_features_enabled(session, subject_id)
+                if embedding is not None
+                and biometric_features_enabled(session, subject_id, for_update=True)
                 else None
             )
             # Exact-duplicate detection: earliest ready asset with the same content hash.

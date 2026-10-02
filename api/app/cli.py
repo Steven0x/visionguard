@@ -186,6 +186,48 @@ def reprocess_assets_cmd(
     typer.echo(f"enqueued reprocess for {count} asset(s) in workspace {workspace}")
 
 
+@app.command("purge-unconsented-embeddings")
+def purge_unconsented_embeddings_cmd(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Count only; make no changes"),
+) -> None:
+    """Null CLIP embeddings for assets + discovery candidates whose subject lacks active biometric
+    consent (or is geo-blocked), across EVERY workspace. One-time cleanup (CLAUDE.md #1); writes a
+    biometrics.purged audit per affected subject."""
+    from sqlalchemy import select
+
+    from api.app.db.session import public_session, tenant_session
+    from api.app.models.public import Workspace
+    from api.app.services.biometrics import purge_unconsented_embeddings
+
+    with public_session() as session:
+        workspaces = [
+            (w.id, w.schema_name)
+            for w in session.scalars(select(Workspace).order_by(Workspace.id))
+        ]
+
+    total_subjects = 0
+    total_embeddings = 0
+    for workspace_id, schema in workspaces:
+        with tenant_session(schema) as session:
+            affected = purge_unconsented_embeddings(
+                session, workspace_id=workspace_id, actor_staff_id=None, dry_run=dry_run
+            )
+        if affected:
+            n = sum(affected.values())
+            total_subjects += len(affected)
+            total_embeddings += n
+            typer.echo(
+                f"  workspace {workspace_id} ({schema}): "
+                f"{len(affected)} subject(s), {n} embedding(s)"
+            )
+    verb = "would clear" if dry_run else "cleared"
+    prefix = "[dry-run] " if dry_run else ""
+    typer.echo(
+        f"{prefix}{verb} {total_embeddings} embedding(s) across {total_subjects} subject(s) "
+        f"in {len(workspaces)} workspace(s)"
+    )
+
+
 # StaffRole is re-exported for convenience in future subcommands.
 __all__ = ["app", "StaffRole"]
 

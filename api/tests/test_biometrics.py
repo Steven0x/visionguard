@@ -11,6 +11,7 @@ from sqlalchemy import select
 from api.app.db.session import tenant_session
 from api.app.models.assets import EMBEDDING_DIM, Asset, AssetStatus
 from api.app.models.audit import AuditLog
+from api.app.models.discovery import CandidateKind, DiscoveryCandidate
 from api.app.models.public import Workspace
 from api.app.models.rights import ConsentRecord, ConsentType, RecordStatus
 from api.app.models.subjects import Subject
@@ -37,9 +38,15 @@ def test_revoking_biometric_consent_purges_asset_embeddings(db, new_workspace: W
             content_type="image/png", size_bytes=1, status=AssetStatus.ready,
             embedding=[0.1] * EMBEDDING_DIM,
         )
-        s.add_all([consent, asset])
+        # A discovery candidate (found image) also carries a subject-associated embedding.
+        candidate = DiscoveryCandidate(
+            subject_id=subject.id, run_id=None, provider="x", kind=CandidateKind.image,
+            source_url="https://found.example/x.png", source_key="k2",
+            embedding=[0.2] * EMBEDDING_DIM,
+        )
+        s.add_all([consent, asset, candidate])
         s.flush()
-        asset_id, consent_id = asset.id, consent.id
+        asset_id, candidate_id, consent_id = asset.id, candidate.id, consent.id
 
     with tenant_session(schema) as s:
         record = consent_service.get_consent(s, consent_id)
@@ -51,10 +58,13 @@ def test_revoking_biometric_consent_purges_asset_embeddings(db, new_workspace: W
 
     with tenant_session(schema) as s:
         reloaded = s.get(Asset, asset_id)
-        assert reloaded is not None
-        assert reloaded.embedding is None  # biometric data hard-deleted on revocation
-        actions = list(s.scalars(select(AuditLog.action)).all())
-    assert "biometrics.purged" in actions
+        reloaded_candidate = s.get(DiscoveryCandidate, candidate_id)
+        assert reloaded is not None and reloaded_candidate is not None
+        # Both the reference-asset AND the found-image embeddings are hard-deleted on revocation.
+        assert reloaded.embedding is None
+        assert reloaded_candidate.embedding is None
+        logs = {a.action: a for a in s.scalars(select(AuditLog)).all()}
+    assert "biometrics.purged" in logs
 
 
 def _subject_with_biometric_consent(schema: str, *, biometrics_blocked: bool):
