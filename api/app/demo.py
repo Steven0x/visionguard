@@ -79,10 +79,36 @@ def _ensure_subject(schema: str) -> int:
                 legal_name=_SUBJECT_NAME,
                 stage_names=["Demo Star"],
                 handles=["@demostar"],
+                # Unblocked + biometric consent below (added directly — the demo bypasses the
+                # service layer) so the demo's CLIP embeddings are allowed under the biometric
+                # gate (CLAUDE.md #1) and the review inbox still shows embedding matches.
+                biometrics_blocked=False,
             )
             session.add(subject)
             session.flush()
         subject_id = subject.id
+
+        # Active biometric consent → whole-image embeddings are permitted for this subject.
+        has_biometric = session.scalar(
+            select(ConsentRecord.id).where(
+                ConsentRecord.subject_id == subject_id,
+                ConsentRecord.type == ConsentType.biometric,
+                ConsentRecord.status == RecordStatus.active,
+            )
+        )
+        if has_biometric is None:
+            session.add(
+                ConsentRecord(
+                    subject_id=subject_id,
+                    type=ConsentType.biometric,
+                    file_key="demo/biometric-consent.pdf",
+                    file_name="biometric-consent.pdf",
+                    content_type="application/pdf",
+                    signer_name=_SUBJECT_NAME,
+                    signed_date=date.today(),
+                    status=RecordStatus.active,
+                )
+            )
 
         # Active workspace-level authorization → the subject is enforceable.
         has_auth = session.scalar(

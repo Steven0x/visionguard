@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import select
 
 from api.app.db.session import tenant_session
+from api.app.models.assets import EMBEDDING_DIM, Asset, AssetStatus
 from api.app.models.audit import AuditLog
 from api.app.models.public import Workspace
 from api.app.models.rights import ConsentRecord, ConsentType, RecordStatus
@@ -17,6 +18,43 @@ from api.app.services import consent as consent_service
 from api.app.services.claim_support import biometric_status
 
 _TODAY = date(2026, 1, 1)
+
+
+def test_revoking_biometric_consent_purges_asset_embeddings(db, new_workspace: Workspace) -> None:
+    """The purge hook hard-deletes the subject's CLIP embeddings (treated as biometric, #1)."""
+    schema = new_workspace.schema_name
+    with tenant_session(schema) as s:
+        subject = Subject(legal_name="s", biometrics_blocked=False)
+        s.add(subject)
+        s.flush()
+        consent = ConsentRecord(
+            subject_id=subject.id, type=ConsentType.biometric, file_key="k",
+            file_name="c.pdf", content_type="application/pdf", signer_name="x",
+            signed_date=_TODAY, status=RecordStatus.active,
+        )
+        asset = Asset(
+            subject_id=subject.id, file_key="k", thumbnail_key="t", file_name="a.png",
+            content_type="image/png", size_bytes=1, status=AssetStatus.ready,
+            embedding=[0.1] * EMBEDDING_DIM,
+        )
+        s.add_all([consent, asset])
+        s.flush()
+        asset_id, consent_id = asset.id, consent.id
+
+    with tenant_session(schema) as s:
+        record = consent_service.get_consent(s, consent_id)
+        assert record is not None
+        consent_service.revoke_consent(
+            s, workspace_id=new_workspace.id, actor_staff_id=db.admin_staff_id,
+            record=record, reason="subject request",
+        )
+
+    with tenant_session(schema) as s:
+        reloaded = s.get(Asset, asset_id)
+        assert reloaded is not None
+        assert reloaded.embedding is None  # biometric data hard-deleted on revocation
+        actions = list(s.scalars(select(AuditLog.action)).all())
+    assert "biometrics.purged" in actions
 
 
 def _subject_with_biometric_consent(schema: str, *, biometrics_blocked: bool):

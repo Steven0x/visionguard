@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from fastapi.testclient import TestClient
 from worker.tasks import fingerprint_asset
@@ -10,6 +12,8 @@ import api.app.fingerprint.embedder as embedder_mod
 from api.app.db.session import tenant_session
 from api.app.models.assets import Asset, AssetStatus
 from api.app.models.public import Workspace
+from api.app.models.rights import ConsentRecord, ConsentType, RecordStatus
+from api.app.models.subjects import Subject
 from api.tests.conftest import Fixtures
 from api.tests.imgutil import png_bytes
 
@@ -20,6 +24,21 @@ def _subject(client, auth_header, db, ws: Workspace) -> int:
         headers=auth_header(db.admin_user_id),
         json={"legal_name": "Fp Subject"},
     ).json()["id"]
+
+
+def _enable_biometrics(schema: str, subject_id: int) -> None:
+    """Grant biometric consent + unblock the subject, so the (gated) CLIP embedding is computed."""
+    with tenant_session(schema) as s:
+        subject = s.get(Subject, subject_id)
+        assert subject is not None
+        subject.biometrics_blocked = False
+        s.add(
+            ConsentRecord(
+                subject_id=subject_id, type=ConsentType.biometric, file_key="k",
+                file_name="c.pdf", content_type="application/pdf", signer_name="x",
+                signed_date=date(2026, 1, 1), status=RecordStatus.active,
+            )
+        )
 
 
 def _upload(client, auth_header, db, ws, sid, content: bytes):
@@ -34,9 +53,11 @@ def test_upload_becomes_ready_with_fingerprints(
     client: TestClient, auth_header, db: Fixtures, new_workspace
 ):
     sid = _subject(client, auth_header, db, new_workspace)
+    _enable_biometrics(new_workspace.schema_name, sid)  # embedding is biometric-gated
     body = _upload(client, auth_header, db, new_workspace, sid, png_bytes()).json()
     assert body["status"] == "ready"
     assert body["sha256"] and body["phash"]
+    assert body["has_embedding"] is True
 
     with tenant_session(new_workspace.schema_name) as s:
         asset = s.get(Asset, body["id"])
@@ -62,6 +83,7 @@ def test_failure_then_retry_recovers(
 
     monkeypatch.setattr(embedder_mod, "get_embedder", lambda: _Boom())
     sid = _subject(client, auth_header, db, new_workspace)
+    _enable_biometrics(new_workspace.schema_name, sid)  # so the (gated) embedder is invoked
     failed = _upload(client, auth_header, db, new_workspace, sid, png_bytes()).json()
     assert failed["status"] == "failed"
     assert failed["attempts"] == 1
@@ -103,6 +125,7 @@ def test_retry_increments_attempts_until_cap(
 
     monkeypatch.setattr(embedder_mod, "get_embedder", lambda: _Boom())
     sid = _subject(client, auth_header, db, new_workspace)
+    _enable_biometrics(new_workspace.schema_name, sid)  # so the (gated) embedder is invoked
     body = _upload(client, auth_header, db, new_workspace, sid, png_bytes()).json()
     assert body["attempts"] == 1
     retry = f"/workspaces/{new_workspace.id}/subjects/{sid}/assets/{body['id']}/retry"

@@ -12,6 +12,7 @@ from api.app.fingerprint.hashing import phash_hex, sha256_hex
 # worker process too, and re-validates the stored bytes rather than a bare Image.open.
 from api.app.images import make_thumbnail, validate_and_load
 from api.app.models.assets import Asset, AssetStatus
+from api.app.services.claim_support import biometric_features_enabled
 from api.app.storage import get_storage
 from sqlalchemy import select, update
 
@@ -35,7 +36,8 @@ def reprocess_asset(workspace_id: int, asset_id: int) -> str:
         asset = session.get(Asset, asset_id)
         if asset is None:
             return "missing"
-        file_key, thumbnail_key = asset.file_key, asset.thumbnail_key
+        file_key, thumbnail_key, subject_id = asset.file_key, asset.thumbnail_key, asset.subject_id
+        wants_embedding = biometric_features_enabled(session, subject_id)
 
     try:
         storage = get_storage()
@@ -46,7 +48,8 @@ def reprocess_asset(workspace_id: int, asset_id: int) -> str:
         )
         digest = sha256_hex(data)
         phash = phash_hex(image)
-        embedding = embedder_mod.get_embedder().embed(data)
+        # CLIP embeddings are gated on biometric consent (CLAUDE.md #1); see fingerprint_asset.
+        embedding = embedder_mod.get_embedder().embed(data) if wants_embedding else None
 
         with tenant_session(schema) as session:
             asset = session.get(Asset, asset_id)
@@ -54,7 +57,11 @@ def reprocess_asset(workspace_id: int, asset_id: int) -> str:
                 return "missing"
             asset.sha256 = digest
             asset.phash = phash
-            asset.embedding = embedding
+            asset.embedding = (
+                embedding
+                if embedding is not None and biometric_features_enabled(session, subject_id)
+                else None
+            )
             asset.error = None
             asset.status = AssetStatus.ready
         return "reprocessed"
@@ -65,6 +72,35 @@ def reprocess_asset(workspace_id: int, asset_id: int) -> str:
                 asset.error = str(exc)[:1000]
                 asset.status = AssetStatus.failed
         return "failed"
+
+
+@celery.task(name="worker.embed_asset")
+def embed_asset(workspace_id: int, asset_id: int) -> str:
+    """Compute and store ONLY the CLIP embedding for a ready asset, IF the subject now has
+    biometric consent (CLAUDE.md #1). Queued when biometric consent is granted, to backfill
+    the embeddings that fingerprinting skipped. Re-checks consent before storing. Never raises."""
+    schema = schema_for_workspace(workspace_id)
+    with tenant_session(schema) as session:
+        asset = session.get(Asset, asset_id)
+        if asset is None or asset.status != AssetStatus.ready:
+            return "skipped"
+        subject_id, file_key = asset.subject_id, asset.file_key
+        if not biometric_features_enabled(session, subject_id):
+            return "no_consent"
+
+    try:
+        embedding = embedder_mod.get_embedder().embed(get_storage().get_object(file_key))
+    except Exception:  # best-effort backfill; leave the asset exact-match-only on failure
+        return "failed"
+
+    with tenant_session(schema) as session:
+        asset = session.get(Asset, asset_id)
+        if asset is None:
+            return "missing"
+        if not biometric_features_enabled(session, subject_id):  # revoked mid-compute
+            return "no_consent"
+        asset.embedding = embedding
+    return "embedded"
 
 
 @celery.task(name="worker.fingerprint_asset")
@@ -89,12 +125,17 @@ def fingerprint_asset(workspace_id: int, asset_id: int) -> str:
             if asset is None:
                 return "missing"
             file_key = asset.file_key
+            subject_id = asset.subject_id
+            wants_embedding = biometric_features_enabled(session, subject_id)
 
         data = get_storage().get_object(file_key)
         digest = sha256_hex(data)
         image = validate_and_load(data)  # bomb-safe decode in the worker process
         phash = phash_hex(image)
-        embedding = embedder_mod.get_embedder().embed(data)
+        # A whole-image CLIP embedding is treated as biometric (CLAUDE.md #1) until counsel rules;
+        # only compute one when the subject has active biometric consent and isn't geo-blocked.
+        # Without it the asset is exact-match-only (pHash + rules). See docs/legal/claims-matrix.md.
+        embedding = embedder_mod.get_embedder().embed(data) if wants_embedding else None
 
         with tenant_session(schema) as session:
             asset = session.get(Asset, asset_id)
@@ -103,7 +144,12 @@ def fingerprint_asset(workspace_id: int, asset_id: int) -> str:
                 return "stale"
             asset.sha256 = digest
             asset.phash = phash
-            asset.embedding = embedding
+            # Re-check consent inside this txn so a revoke during compute can't leave an embedding.
+            asset.embedding = (
+                embedding
+                if embedding is not None and biometric_features_enabled(session, subject_id)
+                else None
+            )
             # Exact-duplicate detection: earliest ready asset with the same content hash.
             asset.duplicate_of_asset_id = session.scalar(
                 select(Asset.id)

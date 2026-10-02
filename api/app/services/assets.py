@@ -192,3 +192,27 @@ def reprocess_assets(
     for asset_id in ids:
         reprocess_asset.delay(workspace_id, asset_id)
     return len(ids)
+
+
+def queue_embeddings_for_subject(
+    session: Session, *, workspace_id: int, subject_id: int
+) -> int:
+    """Enqueue CLIP embedding for a subject's ready assets that don't have one yet — called when
+    biometric consent is granted (CLAUDE.md #1). The task re-checks consent before storing, so
+    it's safe even if consent is revoked before it runs. Returns the count enqueued."""
+    from worker.tasks import embed_asset
+
+    ids = list(
+        session.scalars(
+            select(Asset.id)
+            .where(
+                Asset.subject_id == subject_id,
+                Asset.status == AssetStatus.ready,
+                Asset.embedding.is_(None),
+            )
+            .order_by(Asset.id)
+        ).all()
+    )
+    for asset_id in ids:
+        embed_asset.delay(workspace_id, asset_id)
+    return len(ids)

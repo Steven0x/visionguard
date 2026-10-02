@@ -93,6 +93,11 @@ export function AssetsSection({
               <AssetStatusBadge status={a.status} />
               {a.duplicate_of_asset_id && <span className="text-amber-700">dup</span>}
             </div>
+            {a.status === "ready" && !a.has_embedding && (
+              <p className="text-[11px] leading-tight text-fg-muted" data-testid="exact-match-only">
+                Fingerprint ready (exact-match only — no biometric consent)
+              </p>
+            )}
             <div className="flex gap-2">
               {a.status === "failed" && (
                 <button

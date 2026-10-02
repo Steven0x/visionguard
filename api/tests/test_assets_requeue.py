@@ -71,7 +71,9 @@ def test_reprocess_assets_rederives_ready_assets(
         asset = s.get(Asset, asset_id)
         assert asset is not None
         assert asset.status == AssetStatus.ready
-        assert asset.phash and asset.embedding is not None
+        # pHash is always re-derived; the embedding stays null here — no biometric consent.
+        assert asset.phash
+        assert asset.embedding is None
 
     # Scoping to an unrelated subject enqueues nothing.
     with tenant_session(new_workspace.schema_name) as s:
