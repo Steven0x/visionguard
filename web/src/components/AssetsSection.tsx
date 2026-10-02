@@ -7,6 +7,7 @@ import {
   retryAsset,
   uploadAsset,
 } from "../api";
+import { errorText } from "../errors";
 import { useToken } from "../useToken";
 import { AssetStatusBadge } from "./AssetStatusBadge";
 
@@ -36,7 +37,7 @@ function Thumbnail({
     };
   }, [getToken, workspaceId, subjectId, asset.id]);
 
-  if (!url) return <div className="h-20 w-20 rounded bg-gray-100" />;
+  if (!url) return <div className="h-20 w-20 rounded bg-surface-muted" />;
   return <img src={url} alt={asset.file_name} className="h-20 w-20 rounded object-cover" />;
 }
 
@@ -55,7 +56,7 @@ export function AssetsSection({
     try {
       setAssets(await listAssets(await getToken(), workspaceId, subjectId));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }, [getToken, workspaceId, subjectId]);
 
@@ -76,7 +77,7 @@ export function AssetsSection({
       await fn();
       await reload();
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   };
 
@@ -95,7 +96,7 @@ export function AssetsSection({
             <div className="flex gap-2">
               {a.status === "failed" && (
                 <button
-                  className="text-blue-700"
+                  className="text-primary"
                   onClick={() =>
                     act(async () => retryAsset(await getToken(), workspaceId, subjectId, a.id))
                   }

@@ -11,6 +11,7 @@ import {
   type BillingPlanTier,
   type BillingStatus,
 } from "../api";
+import { errorText } from "../errors";
 import { useToken } from "../useToken";
 
 /** Staff-admin billing management for one workspace. Pricing lives in Stripe; this panel only sets
@@ -28,7 +29,7 @@ export function BillingPanel({ workspaceId }: { workspaceId: number }) {
     try {
       setBilling(await getBilling(await getToken(), workspaceId));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }, [getToken, workspaceId]);
 
@@ -44,7 +45,7 @@ export function BillingPanel({ workspaceId }: { workspaceId: number }) {
       if (note) setMsg(note);
       await reload();
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   };
 
@@ -54,19 +55,19 @@ export function BillingPanel({ workspaceId }: { workspaceId: number }) {
       const { url } = await fn(await getToken());
       window.open(url, "_blank", "noopener");
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   };
 
   if (!billing)
     return (
-      <section className="rounded border border-gray-200 p-3 text-sm text-gray-500">
+      <section className="rounded border border-line p-3 text-sm text-fg-muted">
         Loading billing…
       </section>
     );
 
   return (
-    <section className="space-y-3 rounded border border-gray-200 p-3">
+    <section className="space-y-3 rounded border border-line p-3">
       <h3 className="font-medium">Billing</h3>
 
       {billing.suspended && (
@@ -81,20 +82,20 @@ export function BillingPanel({ workspaceId }: { workspaceId: number }) {
       )}
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-        <dt className="text-gray-500">Status</dt>
+        <dt className="text-fg-muted">Status</dt>
         <dd>{billing.status}</dd>
-        <dt className="text-gray-500">Plan</dt>
+        <dt className="text-fg-muted">Plan</dt>
         <dd>
           {billing.plan_tier} ({billing.cadence})
         </dd>
-        <dt className="text-gray-500">Talents billed</dt>
+        <dt className="text-fg-muted">Talents billed</dt>
         <dd>{billing.quantity}</dd>
-        <dt className="text-gray-500">Renews</dt>
+        <dt className="text-fg-muted">Renews</dt>
         <dd>{billing.current_period_end?.slice(0, 10) ?? "—"}</dd>
       </dl>
 
       <div className="flex flex-wrap items-center gap-2">
-        <label className="text-sm text-gray-500">Mode</label>
+        <label className="text-sm text-fg-muted">Mode</label>
         <select
           className="border p-1 text-sm"
           value={billing.billing_mode}
@@ -108,7 +109,7 @@ export function BillingPanel({ workspaceId }: { workspaceId: number }) {
       </div>
 
       {billing.billing_mode === "stripe" && (
-        <div className="space-y-2 border-t border-gray-100 pt-2">
+        <div className="space-y-2 border-t border-line pt-2">
           <div className="flex flex-wrap items-center gap-2">
             <select
               className="border p-1 text-sm"
@@ -127,7 +128,7 @@ export function BillingPanel({ workspaceId }: { workspaceId: number }) {
               <option value="annual">Annual</option>
             </select>
             <button
-              className="rounded bg-blue-700 px-2 py-1 text-sm text-white"
+              className="rounded bg-primary px-2 py-1 text-sm text-white"
               onClick={() =>
                 void openHosted((t) => createBillingCheckout(t, workspaceId, plan, cadence))
               }
@@ -135,7 +136,7 @@ export function BillingPanel({ workspaceId }: { workspaceId: number }) {
               Checkout
             </button>
             <button
-              className="rounded border border-gray-300 px-2 py-1 text-sm"
+              className="rounded border border-line px-2 py-1 text-sm"
               onClick={() => void openHosted((t) => openBillingPortal(t, workspaceId))}
             >
               Customer Portal
@@ -143,7 +144,7 @@ export function BillingPanel({ workspaceId }: { workspaceId: number }) {
           </div>
           <div className="flex flex-wrap gap-2">
             <button
-              className="rounded border border-gray-300 px-2 py-1 text-sm"
+              className="rounded border border-line px-2 py-1 text-sm"
               onClick={() =>
                 void run(
                   (t) => applyOnboardingCredit(t, workspaceId),
@@ -154,7 +155,7 @@ export function BillingPanel({ workspaceId }: { workspaceId: number }) {
               Credit onboarding audit
             </button>
             <button
-              className="rounded border border-gray-300 px-2 py-1 text-sm"
+              className="rounded border border-line px-2 py-1 text-sm"
               onClick={() =>
                 void run(
                   (t) => applyDesignPartnerCoupon(t, workspaceId),

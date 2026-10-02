@@ -10,6 +10,7 @@ import {
   type Subject,
   type WorkspaceDetail as Detail,
 } from "../api";
+import { errorText } from "../errors";
 import { useToken } from "../useToken";
 import { BillingPanel } from "./BillingPanel";
 import { CasesSection } from "./CasesSection";
@@ -19,6 +20,37 @@ import { ReportsSection } from "./ReportsSection";
 import { ReviewInbox } from "./ReviewInbox";
 import { SubjectDetail } from "./SubjectDetail";
 import { SubjectImport } from "./SubjectImport";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Input,
+  Select,
+  SkeletonRows,
+  Table,
+  TD,
+  TH,
+  THead,
+  TR,
+} from "./ui";
+
+export type Section =
+  | "inbox"
+  | "cases"
+  | "followups"
+  | "reports"
+  | "subjects"
+  | "settings";
+
+const SECTION_TITLE: Record<Section, string> = {
+  inbox: "Review inbox",
+  cases: "Cases",
+  followups: "Follow-ups",
+  reports: "Reports",
+  subjects: "Subjects",
+  settings: "Settings",
+};
 
 const splitList = (v: string) =>
   v
@@ -28,14 +60,14 @@ const splitList = (v: string) =>
 
 export function WorkspaceDetail({
   workspaceId,
+  section,
   isAdmin,
   keepBlurDefault,
-  onBack,
 }: {
   workspaceId: number;
+  section: Section;
   isAdmin: boolean;
   keepBlurDefault: boolean;
-  onBack: () => void;
 }) {
   const getToken = useToken();
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -49,17 +81,20 @@ export function WorkspaceDetail({
     try {
       const token = await getToken();
       setDetail(await getWorkspace(token, workspaceId));
-      setSubjects(
-        await listSubjects(token, workspaceId, showArchived ? "all" : "active"),
-      );
+      setSubjects(await listSubjects(token, workspaceId, showArchived ? "all" : "active"));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }, [getToken, workspaceId, showArchived]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // Changing workspace resets any open subject.
+  useEffect(() => {
+    setOpenSubject(null);
+  }, [workspaceId, section]);
 
   const onAddSubject = async (form: FormData) => {
     setError(null);
@@ -74,15 +109,15 @@ export function WorkspaceDetail({
       });
       await reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     } finally {
       setAddingSubject(false);
     }
   };
 
-  if (!detail) return <p className="text-gray-500">Loading…{error}</p>;
+  if (!detail) return <SkeletonRows rows={5} />;
 
-  if (openSubject) {
+  if (section === "subjects" && openSubject) {
     return (
       <SubjectDetail
         workspaceId={workspaceId}
@@ -98,110 +133,137 @@ export function WorkspaceDetail({
   }
 
   return (
-    <div className="space-y-6">
-      <button className="text-sm text-blue-700" onClick={onBack}>
-        ← All workspaces
-      </button>
-      <h2 className="text-xl font-semibold">{detail.name}</h2>
+    <div className="space-y-5">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">{detail.name}</p>
+        <h1 className="text-xl font-semibold">{SECTION_TITLE[section]}</h1>
+      </div>
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-      {isAdmin && <WorkspaceEditor detail={detail} onSaved={reload} />}
-      {isAdmin && <AllowlistEditor detail={detail} onChanged={reload} />}
-      {isAdmin && <DiscoverySettingsEditor workspaceId={workspaceId} />}
-      {isAdmin && <BillingPanel workspaceId={workspaceId} />}
+      {section === "inbox" && (
+        <ReviewInbox workspaceId={workspaceId} isAdmin={isAdmin} keepBlurDefault={keepBlurDefault} />
+      )}
+      {section === "cases" && <CasesSection workspaceId={workspaceId} isAdmin={isAdmin} />}
+      {section === "followups" && <FollowUpsSection workspaceId={workspaceId} />}
+      {section === "reports" && <ReportsSection workspaceId={workspaceId} subjects={subjects} />}
 
-      <ReviewInbox
-        workspaceId={workspaceId}
-        isAdmin={isAdmin}
-        keepBlurDefault={keepBlurDefault}
-      />
-      <CasesSection workspaceId={workspaceId} isAdmin={isAdmin} />
-      <FollowUpsSection workspaceId={workspaceId} />
-      <ReportsSection workspaceId={workspaceId} subjects={subjects} />
-
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="font-medium">Subjects ({subjects.length})</h3>
-          <label className="text-sm">
-            <input
-              type="checkbox"
-              checked={showArchived}
-              onChange={(e) => setShowArchived(e.target.checked)}
-            />{" "}
-            show archived
-          </label>
-        </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-gray-500">
-              <th className="p-1">Legal name</th>
-              <th className="p-1">Handles</th>
-              <th className="p-1">Residence</th>
-              <th className="p-1">Biometrics</th>
-              <th className="p-1">Status</th>
-              <th className="p-1"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {subjects.map((s) => (
-              <tr key={s.id} className="border-t border-gray-100">
-                <td className="p-1">
-                  <button className="text-blue-700" onClick={() => setOpenSubject(s)}>
-                    {s.legal_name}
-                  </button>
-                </td>
-                <td className="p-1">{s.handles.join(", ")}</td>
-                <td className="p-1">{s.residence_state ?? "—"}</td>
-                <td className="p-1">
-                  {s.biometrics_blocked ? (
-                    <span className="text-amber-700">blocked</span>
-                  ) : (
-                    <span className="text-green-700">allowed</span>
-                  )}
-                </td>
-                <td className="p-1">{s.status}</td>
-                <td className="p-1">
-                  {s.status === "active" && (
-                    <button
-                      className="text-red-700"
-                      onClick={async () => {
-                        await archiveSubject(await getToken(), workspaceId, s.id);
-                        await reload();
-                      }}
-                    >
-                      archive
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <form
-          className="flex flex-wrap items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const form = new FormData(e.currentTarget);
-            e.currentTarget.reset();
-            void onAddSubject(form);
-          }}
-        >
-          <input name="legal_name" required placeholder="Legal name" className="border p-1" />
-          <input name="stage_names" placeholder="Stage names (comma)" className="border p-1" />
-          <input name="handles" placeholder="Handles (comma)" className="border p-1" />
-          <input name="residence_state" placeholder="ST" maxLength={2} className="w-14 border p-1" />
-          <input name="notes" placeholder="Notes" className="border p-1" />
-          <button
-            className="rounded bg-blue-700 px-2 py-1 text-white disabled:opacity-50"
-            disabled={addingSubject}
+      {section === "subjects" && (
+        <div className="space-y-5">
+          <Card
+            title={`Subjects (${subjects.length})`}
+            bodyClassName="p-0"
+            actions={
+              <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(e) => setShowArchived(e.target.checked)}
+                />
+                show archived
+              </label>
+            }
           >
-            {addingSubject ? "Adding…" : "Add subject"}
-          </button>
-        </form>
-      </section>
+            {subjects.length === 0 ? (
+              <div className="p-4">
+                <EmptyState
+                  title="No subjects yet"
+                  description="Add a subject below, or import a roster as CSV."
+                />
+              </div>
+            ) : (
+              <Table>
+                <THead>
+                  <tr>
+                    <TH>Legal name</TH>
+                    <TH>Handles</TH>
+                    <TH>Residence</TH>
+                    <TH>Biometrics</TH>
+                    <TH>Status</TH>
+                    <TH />
+                  </tr>
+                </THead>
+                <tbody>
+                  {subjects.map((s) => (
+                    <TR key={s.id}>
+                      <TD>
+                        <button
+                          className="font-medium text-primary hover:underline"
+                          onClick={() => setOpenSubject(s)}
+                        >
+                          {s.legal_name}
+                        </button>
+                      </TD>
+                      <TD className="text-fg-muted">{s.handles.join(", ") || "—"}</TD>
+                      <TD className="text-fg-muted">{s.residence_state ?? "—"}</TD>
+                      <TD>
+                        {s.biometrics_blocked ? (
+                          <Badge tone="amber">blocked</Badge>
+                        ) : (
+                          <Badge tone="green">allowed</Badge>
+                        )}
+                      </TD>
+                      <TD className="text-fg-muted">{s.status}</TD>
+                      <TD>
+                        {s.status === "active" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 dark:text-red-400"
+                            onClick={async () => {
+                              await archiveSubject(await getToken(), workspaceId, s.id);
+                              await reload();
+                            }}
+                          >
+                            archive
+                          </Button>
+                        )}
+                      </TD>
+                    </TR>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+          </Card>
 
-      <SubjectImport workspaceId={workspaceId} onImported={reload} />
+          <Card title="Add subject" className="max-w-3xl">
+            <form
+              className="flex flex-wrap items-end gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const form = new FormData(e.currentTarget);
+                e.currentTarget.reset();
+                void onAddSubject(form);
+              }}
+            >
+              <Input name="legal_name" required aria-label="Legal name" placeholder="Legal name" />
+              <Input name="stage_names" aria-label="Stage names" placeholder="Stage names (comma)" />
+              <Input name="handles" aria-label="Handles" placeholder="Handles (comma)" />
+              <Input
+                name="residence_state"
+                aria-label="Residence state"
+                placeholder="ST"
+                maxLength={2}
+                className="w-16"
+              />
+              <Input name="notes" aria-label="Notes" placeholder="Notes" />
+              <Button type="submit" disabled={addingSubject}>
+                {addingSubject ? "Adding…" : "Add subject"}
+              </Button>
+            </form>
+          </Card>
+
+          <SubjectImport workspaceId={workspaceId} onImported={reload} />
+        </div>
+      )}
+
+      {section === "settings" && isAdmin && (
+        <div className="space-y-5">
+          <WorkspaceEditor detail={detail} onSaved={reload} />
+          <AllowlistEditor detail={detail} onChanged={reload} />
+          <DiscoverySettingsEditor workspaceId={workspaceId} />
+          <BillingPanel workspaceId={workspaceId} />
+        </div>
+      )}
     </div>
   );
 }
@@ -209,51 +271,67 @@ export function WorkspaceDetail({
 function WorkspaceEditor({ detail, onSaved }: { detail: Detail; onSaved: () => void }) {
   const getToken = useToken();
   return (
-    <form
-      className="flex flex-wrap items-end gap-2 rounded border border-gray-200 p-3"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        const form = new FormData(e.currentTarget);
-        await updateWorkspace(await getToken(), detail.id, {
-          contact_name: String(form.get("contact_name") ?? "") || null,
-          contact_email: String(form.get("contact_email") ?? "") || null,
-          plan: String(form.get("plan") ?? "") || undefined,
-        });
-        onSaved();
-      }}
-    >
-      <input name="contact_name" defaultValue={detail.contact_name ?? ""} placeholder="Contact name" className="border p-1" />
-      <input name="contact_email" defaultValue={detail.contact_email ?? ""} placeholder="Contact email" className="border p-1" />
-      <input name="plan" defaultValue={detail.plan} placeholder="Plan" className="border p-1" />
-      <button className="rounded bg-gray-800 px-2 py-1 text-white">Save workspace</button>
-    </form>
+    <Card title="Workspace" className="max-w-3xl">
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const form = new FormData(e.currentTarget);
+          await updateWorkspace(await getToken(), detail.id, {
+            contact_name: String(form.get("contact_name") ?? "") || null,
+            contact_email: String(form.get("contact_email") ?? "") || null,
+            plan: String(form.get("plan") ?? "") || undefined,
+          });
+          onSaved();
+        }}
+      >
+        <Input
+          name="contact_name"
+          aria-label="Contact name"
+          defaultValue={detail.contact_name ?? ""}
+          placeholder="Contact name"
+        />
+        <Input
+          name="contact_email"
+          aria-label="Contact email"
+          defaultValue={detail.contact_email ?? ""}
+          placeholder="Contact email"
+        />
+        <Input name="plan" aria-label="Plan" defaultValue={detail.plan} placeholder="Plan" />
+        <Button type="submit" variant="secondary">
+          Save workspace
+        </Button>
+      </form>
+    </Card>
   );
 }
 
 function AllowlistEditor({ detail, onChanged }: { detail: Detail; onChanged: () => void }) {
   const getToken = useToken();
   return (
-    <section className="space-y-2 rounded border border-gray-200 p-3">
-      <h3 className="font-medium">Allowlist</h3>
-      <ul className="text-sm">
+    <Card title="Allowlist" className="max-w-3xl">
+      <ul className="mb-3 space-y-1 text-sm">
+        {detail.allowlist.length === 0 && <li className="text-fg-muted">No entries.</li>}
         {detail.allowlist.map((e) => (
           <li key={e.id} className="flex items-center gap-2">
-            <span className="text-gray-500">{e.kind}</span>
+            <Badge tone="gray">{e.kind}</Badge>
             <span>{e.value}</span>
-            <button
-              className="text-red-700"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-red-600 dark:text-red-400"
               onClick={async () => {
                 await removeAllowlist(await getToken(), detail.id, e.id);
                 onChanged();
               }}
             >
               remove
-            </button>
+            </Button>
           </li>
         ))}
       </ul>
       <form
-        className="flex items-end gap-2"
+        className="flex flex-wrap items-end gap-2"
         onSubmit={async (e) => {
           e.preventDefault();
           const form = new FormData(e.currentTarget);
@@ -265,15 +343,15 @@ function AllowlistEditor({ detail, onChanged }: { detail: Detail; onChanged: () 
           onChanged();
         }}
       >
-        <select name="kind" className="border p-1">
+        <Select name="kind" aria-label="Allowlist kind" className="w-32">
           <option value="domain">domain</option>
           <option value="handle">handle</option>
           <option value="url">url</option>
           <option value="account">account</option>
-        </select>
-        <input name="value" required placeholder="value" className="border p-1" />
-        <button className="rounded bg-blue-700 px-2 py-1 text-white">Add</button>
+        </Select>
+        <Input name="value" required aria-label="Allowlist value" placeholder="value" />
+        <Button type="submit">Add</Button>
       </form>
-    </section>
+    </Card>
   );
 }

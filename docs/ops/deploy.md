@@ -74,6 +74,17 @@ Project root `web/`; build command `npm run build`; output `dist`. Set `VITE_API
 `frame-ancestors 'none'`) come from `web/vercel.json` — update the CSP `connect-src`/`script-src`
 hosts to match the real API + Clerk domains.
 
+**Never set `VITE_DEV_AUTH` in a Vercel (or any deployed) build.** It gates the dev-only
+screenshot bypass (Slice 14) that skips Clerk sign-in and reads a token from `localStorage`. The
+production build command is a plain `npm run build` (default mode), which does **not** load
+`web/.env.capture` (that file is only read under `vite --mode capture`), so the flag is unset and
+the bypass is dead-code-eliminated from `dist/`. CI enforces this: the frontend job greps the
+built bundle and fails if any dev-auth string (`vg_dev_token`, `VITE_DEV_AUTH`, …) appears. Even
+if the flag were somehow set, it only makes the SPA read a token string — the API still verifies
+every token, and the backend `AUTH_TEST_MODE` bypass that would accept such a token refuses to
+boot outside `APP_ENV` dev/test (`api/app/config.py` `_guard_test_mode`; tested in
+`api/tests/test_auth_test_mode.py`).
+
 ## Backups, PITR & the restore drill
 
 - **Backups / PITR:** enable Supabase **Pro** daily backups and **Point-in-Time Recovery**. Target

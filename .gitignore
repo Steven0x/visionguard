@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+# Dev-only screenshot capture mode (no secrets; see docs/design/README.md).
+!web/.env.capture
 
 # Python
 __pycache__/

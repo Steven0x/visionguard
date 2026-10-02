@@ -8,6 +8,7 @@ import {
   listDiscoveryRuns,
   scanNow,
 } from "../api";
+import { errorText } from "../errors";
 import { useToken } from "../useToken";
 import { RunStatusBadge } from "./RunStatusBadge";
 
@@ -40,12 +41,12 @@ function CandidateThumb({
 
   if (!candidate.has_thumbnail) {
     return (
-      <div className="flex h-16 w-16 items-center justify-center rounded bg-gray-100 text-[10px] text-gray-500">
+      <div className="flex h-16 w-16 items-center justify-center rounded bg-surface-muted text-[10px] text-fg-muted">
         link
       </div>
     );
   }
-  if (!url) return <div className="h-16 w-16 rounded bg-gray-100" />;
+  if (!url) return <div className="h-16 w-16 rounded bg-surface-muted" />;
   return <img src={url} alt="candidate" className="h-16 w-16 rounded object-cover" />;
 }
 
@@ -68,7 +69,7 @@ export function DiscoverySection({
       setCandidates(await listDiscoveryCandidates(t, workspaceId, subjectId));
       setRuns(await listDiscoveryRuns(t, workspaceId, subjectId));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }, [getToken, workspaceId, subjectId]);
 
@@ -88,7 +89,7 @@ export function DiscoverySection({
       await fn();
       await reload();
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   };
 
@@ -98,7 +99,7 @@ export function DiscoverySection({
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <button
-        className="rounded bg-blue-700 px-2 py-1 text-sm text-white"
+        className="rounded bg-primary px-2 py-1 text-sm text-white"
         onClick={() => act(async () => scanNow(await getToken(), workspaceId, subjectId))}
       >
         Scan now
@@ -132,7 +133,7 @@ export function DiscoverySection({
             <li key={r.id} className="flex items-center gap-2">
               <RunStatusBadge status={r.status} />
               <span>{r.kind}</span>
-              <span className="text-gray-400">
+              <span className="text-fg-muted">
                 {r.calls_made} calls · {r.candidates_found} found · {r.estimated_cost_cents}¢
               </span>
             </li>
@@ -146,14 +147,14 @@ export function DiscoverySection({
           {candidates.map((c) => (
             <div key={c.id} className="w-40 space-y-1 text-xs">
               <CandidateThumb workspaceId={workspaceId} subjectId={subjectId} candidate={c} />
-              <div className="text-gray-500">
+              <div className="text-fg-muted">
                 {c.provider} · {c.kind}
               </div>
               <a
                 href={c.page_url ?? c.source_url}
                 target="_blank"
                 rel="noreferrer"
-                className="block truncate text-blue-700"
+                className="block truncate text-primary"
               >
                 {c.page_url ?? c.source_url}
               </a>

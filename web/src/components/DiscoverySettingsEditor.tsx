@@ -21,7 +21,7 @@ export function DiscoverySettingsEditor({ workspaceId }: { workspaceId: number }
 
   return (
     <form
-      className="flex flex-wrap items-end gap-3 rounded border border-gray-200 p-3"
+      className="flex flex-wrap items-end gap-3 rounded border border-line p-3"
       onSubmit={async (e) => {
         e.preventDefault();
         const form = new FormData(e.currentTarget);

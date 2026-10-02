@@ -5,7 +5,7 @@ export function ImportPreviewTable({ rows }: { rows: PreviewRow[] }) {
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr className="text-left text-gray-500">
+        <tr className="text-left text-fg-muted">
           <th className="p-1">#</th>
           <th className="p-1">Legal name</th>
           <th className="p-1">Handles</th>

@@ -25,7 +25,7 @@ export function KeywordsSection({
       <h3 className="font-medium">Keywords</h3>
       <ul className="flex flex-wrap gap-2 text-sm">
         {keywords.map((k) => (
-          <li key={k.id} className="rounded bg-gray-100 px-2 py-0.5">
+          <li key={k.id} className="rounded bg-surface-muted px-2 py-0.5">
             {k.keyword}{" "}
             <button
               className="text-red-700"
@@ -53,7 +53,7 @@ export function KeywordsSection({
         }}
       >
         <input name="keyword" placeholder="e.g. stage name + leaked" className="border p-1" />
-        <button className="rounded bg-blue-700 px-2 py-1 text-white">Add</button>
+        <button className="rounded bg-primary px-2 py-1 text-white">Add</button>
       </form>
     </section>
   );

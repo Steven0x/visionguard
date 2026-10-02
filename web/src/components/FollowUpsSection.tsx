@@ -7,7 +7,9 @@ import {
   getRemovalMetrics,
   listFollowUps,
 } from "../api";
+import { errorText } from "../errors";
 import { useToken } from "../useToken";
+import { Card, EmptyState, Table, TD, TH, THead, TR } from "./ui";
 
 const pct = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)}%`);
 
@@ -26,7 +28,7 @@ export function FollowUpsSection({ workspaceId }: { workspaceId: number }) {
       setMetrics(await getRemovalMetrics(t, workspaceId));
       setSummary(await getMetricsSummary(t, workspaceId));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }, [getToken, workspaceId]);
 
@@ -35,104 +37,95 @@ export function FollowUpsSection({ workspaceId }: { workspaceId: number }) {
   }, [reload]);
 
   return (
-    <section
-      className="space-y-3 rounded border border-gray-200 p-3"
-      data-testid="followups-section"
-    >
-      <h3 className="font-medium">Follow-ups &amp; removal metrics</h3>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+    <div className="space-y-5" data-testid="followups-section">
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-      <div>
-        <h4 className="text-sm font-medium">Follow-ups ({followUps.length})</h4>
+      <Card title={`Follow-ups (${followUps.length})`} bodyClassName={followUps.length ? "p-4" : "p-4"}>
         {followUps.length === 0 ? (
-          <p className="text-sm text-gray-400">Nothing needs a nudge right now.</p>
+          <EmptyState title="Nothing needs a nudge" description="Overdue filings will show up here." />
         ) : (
           <ul className="text-sm">
             {followUps.map((f) => (
-              <li key={`${f.reason}:${f.case_id}`} className="border-t border-gray-100 py-1">
+              <li key={`${f.reason}:${f.case_id}`} className="border-t border-line py-1 first:border-0">
                 <span className="font-mono">case #{f.case_id}</span> · {f.claim_type} ·{" "}
-                <span className="text-gray-600">{f.offender_key ?? "—"}</span> ·{" "}
+                <span className="text-fg-muted">{f.offender_key ?? "—"}</span> ·{" "}
                 {f.reason === "removal_unverified" ? (
-                  <span className="text-red-700">removal unverified — confirm or reopen</span>
+                  <span className="text-red-700 dark:text-red-400">
+                    removal unverified — confirm or reopen
+                  </span>
                 ) : (
-                  <span className="text-amber-700">due {f.due_at?.slice(0, 10) ?? "—"}</span>
+                  <span className="text-amber-700 dark:text-amber-400">
+                    due {f.due_at?.slice(0, 10) ?? "—"}
+                  </span>
                 )}
               </li>
             ))}
           </ul>
         )}
-      </div>
+      </Card>
 
-      <div>
-        <h4 className="text-sm font-medium">Removal metrics (per platform × claim)</h4>
+      <Card title="Removal metrics (per platform × claim)" bodyClassName={metrics.length ? "p-0" : "p-4"}>
         {metrics.length === 0 ? (
-          <p className="text-sm text-gray-400">No filings yet.</p>
+          <EmptyState title="No filings yet" description="Metrics appear once notices are filed." />
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-gray-500">
-                <th className="p-1">Platform</th>
-                <th className="p-1">Claim</th>
-                <th className="p-1">Filed</th>
-                <th className="p-1">Withdrawn</th>
-                <th className="p-1">Removed</th>
-                <th className="p-1" title="removals a recheck observed gone">Verified</th>
-                <th className="p-1" title="removals recorded by staff, never recheck-verified">
-                  Staff-only
-                </th>
-                <th className="p-1">Pending</th>
-                <th className="p-1">Removal rate</th>
-                <th className="p-1">Median days</th>
+          <Table>
+            <THead>
+              <tr>
+                <TH>Platform</TH>
+                <TH>Claim</TH>
+                <TH>Filed</TH>
+                <TH>Withdrawn</TH>
+                <TH>Removed</TH>
+                <TH title="removals a recheck observed gone">Verified</TH>
+                <TH title="removals recorded by staff, never recheck-verified">Staff-only</TH>
+                <TH>Pending</TH>
+                <TH>Removal rate</TH>
+                <TH>Median days</TH>
               </tr>
-            </thead>
+            </THead>
             <tbody>
               {metrics.map((m) => (
-                <tr key={`${m.platform}:${m.claim_type}`} className="border-t border-gray-100">
-                  <td className="p-1">{m.platform}</td>
-                  <td className="p-1 font-mono">{m.claim_type}</td>
-                  <td className="p-1">{m.filed}</td>
-                  <td className="p-1">{m.withdrawn}</td>
-                  <td className="p-1">{m.removed}</td>
-                  <td className="p-1">{m.removed_verified}</td>
-                  <td className="p-1">{m.removed_staff_only}</td>
-                  <td className="p-1">{m.pending}</td>
-                  <td className="p-1">
-                    {m.removal_rate == null ? "—" : `${Math.round(m.removal_rate * 100)}%`}
-                  </td>
-                  <td className="p-1">
-                    {m.median_days_to_removal == null ? "—" : m.median_days_to_removal}
-                  </td>
-                </tr>
+                <TR key={`${m.platform}:${m.claim_type}`}>
+                  <TD>{m.platform}</TD>
+                  <TD className="font-mono text-xs">{m.claim_type}</TD>
+                  <TD>{m.filed}</TD>
+                  <TD>{m.withdrawn}</TD>
+                  <TD>{m.removed}</TD>
+                  <TD>{m.removed_verified}</TD>
+                  <TD>{m.removed_staff_only}</TD>
+                  <TD>{m.pending}</TD>
+                  <TD>{m.removal_rate == null ? "—" : `${Math.round(m.removal_rate * 100)}%`}</TD>
+                  <TD>{m.median_days_to_removal == null ? "—" : m.median_days_to_removal}</TD>
+                </TR>
               ))}
             </tbody>
-          </table>
+          </Table>
         )}
-      </div>
+      </Card>
 
       {summary && (
-        <div data-testid="metrics-summary">
-          <h4 className="text-sm font-medium">Internal metrics</h4>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
+        <Card title="Internal metrics" data-testid="metrics-summary">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-gray-500" title="(filed − withdrawn) / filed">
+              <dt className="text-xs text-fg-muted" title="(filed − withdrawn) / filed">
                 Review precision
               </dt>
               <dd>{pct(summary.review_precision)}</dd>
             </div>
             <div>
-              <dt className="text-gray-500" title="withdrawn / filed">
+              <dt className="text-xs text-fg-muted" title="withdrawn / filed">
                 Wrong-filing rate
               </dt>
               <dd>{pct(summary.wrong_filing_rate)}</dd>
             </div>
             <div>
-              <dt className="text-gray-500" title="reopened / removed">
+              <dt className="text-xs text-fg-muted" title="reopened / removed">
                 Re-upload rate
               </dt>
               <dd>{pct(summary.re_upload_rate)}</dd>
             </div>
             <div>
-              <dt className="text-gray-500" title="median shown → decision">
+              <dt className="text-xs text-fg-muted" title="median shown → decision">
                 Review minutes / case
               </dt>
               <dd>
@@ -142,19 +135,19 @@ export function FollowUpsSection({ workspaceId }: { workspaceId: number }) {
               </dd>
             </div>
             <div>
-              <dt className="text-gray-500">Provider cost</dt>
+              <dt className="text-xs text-fg-muted">Provider cost</dt>
               <dd>${(summary.provider_cost_total_cents / 100).toFixed(2)}</dd>
             </div>
           </dl>
           {summary.provider_cost.length > 0 && (
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-2 text-xs text-fg-muted">
               {summary.provider_cost
                 .map((c) => `${c.provider}: $${(c.cost_cents / 100).toFixed(2)}`)
                 .join(" · ")}
             </p>
           )}
-        </div>
+        </Card>
       )}
-    </section>
+    </div>
   );
 }

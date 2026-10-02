@@ -18,11 +18,11 @@ export function ScoreBadge({ item }: { item: InboxItem }) {
   return (
     <div className="space-y-1" data-testid="score-badge">
       <div className="flex items-center gap-2">
-        <span className="rounded bg-gray-900 px-2 py-0.5 text-sm font-semibold text-white">
+        <span className="rounded bg-slate-900 px-2 py-0.5 text-sm font-semibold text-white dark:bg-slate-700">
           {item.score ?? "—"}
         </span>
         {item.unverified && (
-          <span className="text-xs text-amber-700" data-testid="unverified">
+          <span className="text-xs text-amber-700 dark:text-amber-400" data-testid="unverified">
             unverified — needs manual check
           </span>
         )}
@@ -30,7 +30,10 @@ export function ScoreBadge({ item }: { item: InboxItem }) {
       {chips.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {chips.map((c) => (
-            <span key={c} className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600">
+            <span
+              key={c}
+              className="rounded bg-surface-muted px-1.5 py-0.5 text-[11px] text-fg-muted"
+            >
               {c}
             </span>
           ))}

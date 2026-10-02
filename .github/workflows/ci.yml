@@ -83,3 +83,13 @@ jobs:
         run: npm run test -- --run
       - name: Build
         run: npm run build
+      - name: Dev-auth bypass must be absent from the production bundle
+        # The Slice-14 screenshot path is gated by VITE_DEV_AUTH (unset in prod) and must be
+        # dead-code-eliminated from dist/, not merely unreachable. Fail CI if it ever ships.
+        run: |
+          if grep -rEl 'vg_dev_token|VITE_DEV_AUTH|dev_capture|capture mode' dist/; then
+            echo "::error::dev-only auth bypass strings found in the production bundle"
+            grep -rnoE 'vg_dev_token|VITE_DEV_AUTH|dev_capture|capture mode' dist/ || true
+            exit 1
+          fi
+          echo "ok: no dev-auth bypass strings in dist/"

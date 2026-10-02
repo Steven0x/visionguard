@@ -14,11 +14,28 @@ import {
   refileCase,
   transitionCase,
 } from "../api";
+import { errorText } from "../errors";
 import { useToken } from "../useToken";
 import { CaseStatusBadge } from "./CaseStatusBadge";
 import { EvidenceSection } from "./EvidenceSection";
 import { NoticeSection } from "./NoticeSection";
 import { OutcomesSection } from "./OutcomesSection";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Input,
+  Modal,
+  Select,
+  SkeletonRows,
+  Table,
+  TD,
+  TH,
+  THead,
+  TR,
+  Textarea,
+} from "./ui";
 
 const CLAIM_TYPES = ["copyright", "likeness", "ncii", "impersonation", "trademark"];
 const NOTE_REQUIRED: CaseStatus[] = ["withdrawn"];
@@ -31,7 +48,7 @@ export function CasesSection({
   isAdmin: boolean;
 }) {
   const getToken = useToken();
-  const [rows, setRows] = useState<CaseRow[]>([]);
+  const [rows, setRows] = useState<CaseRow[] | null>(null);
   const [offenders, setOffenders] = useState<OffenderGroup[]>([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [overdueOnly, setOverdueOnly] = useState(false);
@@ -52,7 +69,7 @@ export function CasesSection({
       );
       setOffenders(await listOffenders(t, workspaceId));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }, [getToken, workspaceId, statusFilter, overdueOnly, offenderFilter]);
 
@@ -74,86 +91,113 @@ export function CasesSection({
     );
   }
 
+  if (rows === null) return <SkeletonRows rows={5} />;
+
   return (
-    <section className="space-y-3 rounded border border-gray-200 p-3" data-testid="cases-section">
-      <h3 className="font-medium">Cases ({rows.length})</h3>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+    <Card
+      data-testid="cases-section"
+      bodyClassName="p-0"
+      title={`Cases (${rows.length})`}
+      actions={
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <Select
+            aria-label="Status filter"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="">any status</option>
+            {(
+              [
+                "confirmed",
+                "filed",
+                "removed",
+                "countered",
+                "escalated",
+                "monitoring",
+                "withdrawn",
+                "recovered",
+                "closed",
+              ] as CaseStatus[]
+            ).map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </Select>
+          <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+            <input
+              type="checkbox"
+              checked={overdueOnly}
+              onChange={(e) => setOverdueOnly(e.target.checked)}
+            />
+            overdue only
+          </label>
+          {offenderFilter && (
+            <Button variant="ghost" size="sm" onClick={() => setOffenderFilter("")}>
+              clear offender: {offenderFilter} ✕
+            </Button>
+          )}
+        </div>
+      }
+    >
+      {error && <p className="px-4 pt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="border p-1"
-        >
-          <option value="">any status</option>
-          {(
-            ["confirmed", "filed", "removed", "countered", "escalated", "monitoring", "withdrawn", "recovered", "closed"] as CaseStatus[]
-          ).map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <label>
-          <input
-            type="checkbox"
-            checked={overdueOnly}
-            onChange={(e) => setOverdueOnly(e.target.checked)}
-          />{" "}
-          overdue only
-        </label>
-        {offenderFilter && (
-          <button className="text-blue-700" onClick={() => setOffenderFilter("")}>
-            clear offender: {offenderFilter} ✕
-          </button>
-        )}
-      </div>
-
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-gray-500">
-            <th className="p-1">Status</th>
-            <th className="p-1">Claim</th>
-            <th className="p-1">Offender</th>
-            <th className="p-1">Due</th>
-            <th className="p-1"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((c) => (
-            <tr key={c.id} className="border-t border-gray-100">
-              <td className="p-1">
-                <CaseStatusBadge row={c} />
-              </td>
-              <td className="p-1 font-mono">{c.claim_type}</td>
-              <td className="p-1 text-gray-600">{c.offender_key ?? "—"}</td>
-              <td className="p-1 text-gray-400">{c.due_at ? c.due_at.slice(0, 10) : "—"}</td>
-              <td className="p-1">
-                <button className="text-blue-700" onClick={() => setOpenId(c.id)}>
-                  open
-                </button>
-              </td>
+      {rows.length === 0 ? (
+        <div className="p-4">
+          <EmptyState
+            title="No cases"
+            description="Confirm a candidate in the review inbox to open a case."
+          />
+        </div>
+      ) : (
+        <Table>
+          <THead>
+            <tr>
+              <TH>Status</TH>
+              <TH>Claim</TH>
+              <TH>Offender</TH>
+              <TH>Due</TH>
+              <TH />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </THead>
+          <tbody>
+            {rows.map((c) => (
+              <TR key={c.id}>
+                <TD>
+                  <CaseStatusBadge row={c} />
+                </TD>
+                <TD className="font-mono text-xs">{c.claim_type}</TD>
+                <TD className="text-fg-muted">{c.offender_key ?? "—"}</TD>
+                <TD className="text-fg-muted">{c.due_at ? c.due_at.slice(0, 10) : "—"}</TD>
+                <TD>
+                  <Button variant="ghost" size="sm" onClick={() => setOpenId(c.id)}>
+                    open
+                  </Button>
+                </TD>
+              </TR>
+            ))}
+          </tbody>
+        </Table>
+      )}
 
-      <div>
-        <h4 className="text-sm font-medium">By offender</h4>
-        <ul className="flex flex-wrap gap-2 text-xs">
-          {offenders.map((g) => (
-            <li key={g.offender_key}>
-              <button
-                className="rounded bg-gray-100 px-2 py-0.5 text-gray-700"
-                onClick={() => setOffenderFilter(g.offender_key)}
-              >
-                {g.offender_key} · {g.open} open / {g.total}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </section>
+      {offenders.length > 0 && (
+        <div className="border-t border-line p-4">
+          <h4 className="mb-2 text-xs font-medium text-fg-muted">By offender</h4>
+          <ul className="flex flex-wrap gap-2 text-xs">
+            {offenders.map((g) => (
+              <li key={g.offender_key}>
+                <button
+                  className="rounded-md bg-surface-muted px-2 py-1 text-fg-muted hover:text-fg"
+                  onClick={() => setOffenderFilter(g.offender_key)}
+                >
+                  {g.offender_key} · {g.open} open / {g.total}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -172,12 +216,14 @@ function CaseDetailView({
   const [detail, setDetail] = useState<CaseDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [noteTransition, setNoteTransition] = useState<CaseStatus | null>(null);
+  const [transitionNote, setTransitionNote] = useState("");
 
   const reload = useCallback(async () => {
     try {
       setDetail(await getCaseDetail(await getToken(), workspaceId, caseId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     }
   }, [getToken, workspaceId, caseId]);
 
@@ -193,7 +239,7 @@ function CaseDetailView({
       await fn();
       await reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -202,88 +248,90 @@ function CaseDetailView({
   const runTransition = (to: CaseStatus, note?: string) =>
     act(async () => transitionCase(await getToken(), workspaceId, caseId, to, { note }));
 
-  if (error) return <p className="text-sm text-red-600">{error}</p>;
-  if (!detail) return <p className="text-gray-500">Loading…</p>;
+  if (error) return <p className="text-sm text-red-600 dark:text-red-400">{error}</p>;
+  if (!detail) return <SkeletonRows rows={5} />;
   const c = detail.case;
 
   return (
-    <section className="space-y-4">
-      <button className="text-sm text-blue-700" onClick={onBack}>
+    <div className="space-y-4">
+      <Button variant="ghost" size="sm" onClick={onBack}>
         ← Cases
-      </button>
-      <div className="flex items-center gap-3">
+      </Button>
+      <div className="flex flex-wrap items-center gap-3">
         <h3 className="text-lg font-semibold">Case #{c.id}</h3>
         <CaseStatusBadge row={c} />
         <span className="font-mono text-sm">{c.claim_type}</span>
       </div>
 
-      <div className="text-sm text-gray-600">
-        <div>Offender: {c.offender_key ?? "—"}</div>
-        <div>
-          Source:{" "}
-          {c.source_url ? (
-            <a
-              href={c.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-700"
-            >
-              {c.source_url}
-            </a>
-          ) : (
-            "—"
-          )}
+      <Card>
+        <div className="space-y-1 text-sm text-fg-muted">
+          <div>Offender: {c.offender_key ?? "—"}</div>
+          <div>
+            Source:{" "}
+            {c.source_url ? (
+              <a
+                href={c.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                {c.source_url}
+              </a>
+            ) : (
+              "—"
+            )}
+          </div>
+          <div>
+            Candidate #{c.candidate_id ?? "—"} · matched asset #{c.matched_asset_id ?? "—"} ·
+            assignee {c.assigned_staff_id ?? "—"}
+          </div>
+          <div className="flex items-center gap-2">
+            Sensitive:{" "}
+            {c.sensitive ? (
+              <>
+                <Badge tone="amber">yes — report thumbnails hidden</Badge>
+                {c.claim_type !== "ncii" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() =>
+                      act(async () => clearCaseSensitive(await getToken(), workspaceId, caseId))
+                    }
+                  >
+                    clear
+                  </Button>
+                )}
+              </>
+            ) : (
+              <span>no</span>
+            )}
+          </div>
         </div>
-        <div>
-          Candidate #{c.candidate_id ?? "—"} · matched asset #{c.matched_asset_id ?? "—"} ·
-          assignee {c.assigned_staff_id ?? "—"}
-        </div>
-        <div>
-          Sensitive:{" "}
-          {c.sensitive ? (
-            <>
-              <span className="text-amber-700">yes — report thumbnails hidden</span>
-              {c.claim_type !== "ncii" && (
-                <button
-                  className="ml-2 text-blue-700 disabled:opacity-40"
-                  disabled={busy}
-                  onClick={() =>
-                    act(async () =>
-                      clearCaseSensitive(await getToken(), workspaceId, caseId),
-                    )
-                  }
-                >
-                  clear
-                </button>
-              )}
-            </>
-          ) : (
-            <span className="text-gray-600">no</span>
-          )}
-        </div>
-      </div>
+      </Card>
 
       {/* Transitions — only those the state machine currently allows. */}
       <div className="flex flex-wrap gap-2">
         {detail.allowed_transitions.map((to) => (
-          <button
+          <Button
             key={to}
-            className="rounded bg-gray-800 px-2 py-1 text-sm text-white disabled:opacity-40"
+            variant="secondary"
+            size="sm"
             disabled={busy}
             onClick={() => {
               if (NOTE_REQUIRED.includes(to)) {
-                const note = window.prompt(`Note for moving to ${to} (required):`) ?? "";
-                if (note.trim()) void runTransition(to, note);
+                setNoteTransition(to);
+                setTransitionNote("");
               } else {
                 void runTransition(to);
               }
             }}
           >
             → {to}
-          </button>
+          </Button>
         ))}
         {detail.allowed_transitions.length === 0 && (
-          <span className="text-sm text-gray-400">terminal — no transitions</span>
+          <span className="text-sm text-fg-muted">terminal — no transitions</span>
         )}
       </div>
 
@@ -306,15 +354,11 @@ function CaseDetailView({
       )}
 
       <Assign
-        onAssign={(sid) =>
-          act(async () => assignCase(await getToken(), workspaceId, caseId, sid))
-        }
+        onAssign={(sid) => act(async () => assignCase(await getToken(), workspaceId, caseId, sid))}
       />
 
       <EvidenceSection workspaceId={workspaceId} caseId={caseId} isAdmin={isAdmin} />
-
       <NoticeSection workspaceId={workspaceId} caseId={caseId} />
-
       <OutcomesSection
         workspaceId={workspaceId}
         caseId={caseId}
@@ -323,34 +367,38 @@ function CaseDetailView({
       />
 
       {/* Timeline */}
-      <div>
-        <h4 className="font-medium">Timeline</h4>
+      <Card title="Timeline">
         <ul className="space-y-1 text-xs">
           {detail.timeline.map((e) => (
-            <li key={e.id} className="border-t border-gray-100 py-1">
-              <span className="text-gray-400">{e.created_at.slice(0, 19).replace("T", " ")}</span>{" "}
+            <li key={e.id} className="border-t border-line py-1 first:border-0">
+              <span className="text-fg-muted">
+                {e.created_at.slice(0, 19).replace("T", " ")}
+              </span>{" "}
               <span className="font-medium">{e.kind}</span>{" "}
-              {e.from_status && <span>{e.from_status} → {e.to_status}</span>}
+              {e.from_status && (
+                <span>
+                  {e.from_status} → {e.to_status}
+                </span>
+              )}
               {e.related_case_id && <span> ↔ case #{e.related_case_id}</span>}
-              {e.reason && <span className="text-gray-500"> ({e.reason})</span>}
-              {e.note && <span className="text-gray-600"> — {e.note}</span>}
+              {e.reason && <span className="text-fg-muted"> ({e.reason})</span>}
+              {e.note && <span className="text-fg-muted"> — {e.note}</span>}
             </li>
           ))}
         </ul>
-      </div>
+      </Card>
 
       {/* Notes (append-only) */}
-      <div>
-        <h4 className="font-medium">Notes</h4>
-        <ul className="space-y-1 text-sm">
+      <Card title="Notes">
+        <ul className="mb-2 space-y-1 text-sm">
           {detail.notes.map((n) => (
-            <li key={n.id} className="border-t border-gray-100 py-1">
-              <span className="text-gray-400">{n.created_at.slice(0, 10)}</span> {n.body}
+            <li key={n.id} className="border-t border-line py-1 first:border-0">
+              <span className="text-fg-muted">{n.created_at.slice(0, 10)}</span> {n.body}
             </li>
           ))}
         </ul>
         <form
-          className="mt-1 flex gap-2"
+          className="flex gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             const input = e.currentTarget.elements.namedItem("body") as HTMLInputElement;
@@ -360,11 +408,42 @@ function CaseDetailView({
             }
           }}
         >
-          <input name="body" placeholder="Add a note" className="flex-1 border p-1 text-sm" />
-          <button className="rounded bg-blue-700 px-2 py-1 text-sm text-white">Add</button>
+          <Input name="body" aria-label="Add a note" placeholder="Add a note" className="flex-1" />
+          <Button type="submit">Add</Button>
         </form>
-      </div>
-    </section>
+      </Card>
+
+      <Modal
+        open={noteTransition !== null}
+        onClose={() => setNoteTransition(null)}
+        title={`Move to ${noteTransition ?? ""}`}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setNoteTransition(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!transitionNote.trim()}
+              onClick={() => {
+                const to = noteTransition;
+                const note = transitionNote.trim();
+                setNoteTransition(null);
+                if (to) void runTransition(to, note);
+              }}
+            >
+              Confirm
+            </Button>
+          </>
+        }
+      >
+        <Textarea
+          label="Note (required)"
+          value={transitionNote}
+          onChange={(e) => setTransitionNote(e.target.value)}
+          autoFocus
+        />
+      </Modal>
+    </div>
   );
 }
 
@@ -376,27 +455,31 @@ function ClaimForm({
   onSubmit: (claim: string, note: string) => Promise<void>;
 }) {
   return (
-    <form
-      className="flex flex-wrap items-end gap-2 rounded bg-gray-50 p-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const form = new FormData(e.currentTarget);
-        const claim = String(form.get("claim") ?? "");
-        const note = String(form.get("note") ?? "");
-        if (note.trim()) void onSubmit(claim, note);
-      }}
-    >
-      <span className="text-sm text-gray-600">{label}:</span>
-      <select name="claim" className="border p-1 text-sm">
-        {CLAIM_TYPES.map((t) => (
-          <option key={t} value={t}>
-            {t}
-          </option>
-        ))}
-      </select>
-      <input name="note" required placeholder="note (required)" className="border p-1 text-sm" />
-      <button className="rounded bg-gray-800 px-2 py-1 text-sm text-white">{label}</button>
-    </form>
+    <Card className="max-w-xl" bodyClassName="p-3">
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const form = new FormData(e.currentTarget);
+          const claim = String(form.get("claim") ?? "");
+          const note = String(form.get("note") ?? "");
+          if (note.trim()) void onSubmit(claim, note);
+        }}
+      >
+        <span className="text-sm text-fg-muted">{label}:</span>
+        <Select name="claim" aria-label="Claim type">
+          {CLAIM_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </Select>
+        <Input name="note" required aria-label="Note" placeholder="note (required)" />
+        <Button type="submit" variant="secondary">
+          {label}
+        </Button>
+      </form>
+    </Card>
   );
 }
 
@@ -411,9 +494,11 @@ function Assign({ onAssign }: { onAssign: (staffId: number | null) => Promise<vo
         void onAssign(raw ? Number(raw) : null);
       }}
     >
-      <span className="text-gray-600">Assign to staff id:</span>
-      <input name="staff_id" className="w-24 border p-1" placeholder="(blank = none)" />
-      <button className="rounded bg-gray-700 px-2 py-1 text-white">Assign</button>
+      <span className="text-fg-muted">Assign to staff id:</span>
+      <Input name="staff_id" aria-label="Staff id" className="w-28" placeholder="(blank = none)" />
+      <Button type="submit" variant="secondary">
+        Assign
+      </Button>
     </form>
   );
 }

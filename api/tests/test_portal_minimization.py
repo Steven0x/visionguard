@@ -103,17 +103,31 @@ def test_timeline_has_transitions_only_no_actor_or_notes(
             CaseEvent(
                 case_id=cid, kind=CaseEventKind.transition,
                 from_status=CaseStatus.confirmed, to_status=CaseStatus.filed,
-                actor_staff_id=999, reason="internal-reason", note="internal reviewer note",
+                actor_staff_id=777, reason="internal-reason", note="internal reviewer note",
             )
         )
     hdr = _portal(client, new_workspace, auth_header)
     detail = client.get(f"/portal/cases/{cid}", headers=hdr).json()
+    # Exact key allowlists — like the event check below. This catches a staff id (or any other
+    # internal field) leaking under ANY name, and avoids the flaky value-substring match the old
+    # `"999" not in str(detail)` used (short numbers collide with incidental digits in ids and
+    # created_at microseconds, failing ~1% of full runs as ids grow).
+    assert set(detail) == {"case", "timeline"}
+    assert set(detail["case"]) == {
+        "id",
+        "subject_id",
+        "claim_type",
+        "status",
+        "display_url",
+        "created_at",
+        "updated_at",
+    }
     assert detail["timeline"], "expected a transition event"
     ev = detail["timeline"][0]
     assert set(ev) == {"from_status", "to_status", "created_at"}
+    # Internal note/reason text must not appear inside an allowed field's value either.
     blob = str(detail)
     assert "internal reviewer note" not in blob and "internal-reason" not in blob
-    assert "999" not in blob  # no actor_staff_id leaked
 
 
 def test_reports_omit_internal_fields(

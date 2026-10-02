@@ -1,3 +1,4 @@
+import { UserButton } from "@clerk/clerk-react";
 import { useCallback, useEffect, useState } from "react";
 import {
   answerPortalNeed,
@@ -14,6 +15,7 @@ import {
   submitPortalTip,
   type BillingCadence,
   type BillingPlanTier,
+  type CaseStatus,
   type PortalBillingStatus,
   type PortalCase,
   type PortalCaseDetail,
@@ -22,9 +24,34 @@ import {
   type PortalReport,
   type PortalSubject,
 } from "../../api";
+import { errorText } from "../../errors";
+import { ThemeToggle } from "../ThemeToggle";
+import {
+  Button,
+  Card,
+  EmptyState,
+  Input,
+  Select,
+  SkeletonRows,
+  StatusBadge,
+  Tabs,
+  Textarea,
+  useToast,
+} from "../ui";
 import { useToken } from "../../useToken";
+import { PortalShell } from "./PortalShell";
+
+const DEV_AUTH = import.meta.env.VITE_DEV_AUTH === "1";
 
 type Tab = "cases" | "subjects" | "needs" | "reports" | "billing";
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "cases", label: "Cases" },
+  { key: "subjects", label: "Subjects" },
+  { key: "needs", label: "Needs from you" },
+  { key: "reports", label: "Reports" },
+  { key: "billing", label: "Billing" },
+];
 
 /** The agency customer portal: a read-mostly view of their own enforcement, plus two limited
  * writes (submit a URL tip, answer a "Needs from you" item). Staff components are never rendered
@@ -42,7 +69,7 @@ export function AgencyPortal() {
         const result = await getPortalContext(await getToken());
         if (active) setCtx(result);
       } catch (e) {
-        if (active) setError(String(e));
+        if (active) setError(errorText(e));
       }
     })();
     return () => {
@@ -50,41 +77,42 @@ export function AgencyPortal() {
     };
   }, [getToken]);
 
-  if (error) return <p className="text-red-600">{error}</p>;
-  if (!ctx) return <p className="text-gray-500">Loading…</p>;
+  if (error) {
+    return (
+      <div className="mx-auto max-w-md p-8">
+        <EmptyState title="Couldn’t load your portal" description={error} />
+      </div>
+    );
+  }
+  if (!ctx) {
+    return (
+      <div className="mx-auto max-w-md p-8">
+        <SkeletonRows rows={4} />
+      </div>
+    );
+  }
 
-  const tabs: [Tab, string][] = [
-    ["cases", "Cases"],
-    ["subjects", "Subjects"],
-    ["needs", "Needs from you"],
-    ["reports", "Reports"],
-    ["billing", "Billing"],
-  ];
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-gray-500">
-        {ctx.workspace_name} — signed in as {ctx.email}
-      </p>
-      <BillingBanner />
-      <nav className="flex gap-2 border-b border-gray-200">
-        {tabs.map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`px-3 py-1 text-sm ${
-              tab === key ? "border-b-2 border-blue-700 font-semibold" : "text-gray-500"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-      {tab === "cases" && <CasesTab />}
-      {tab === "subjects" && <SubjectsTab />}
-      {tab === "needs" && <NeedsTab />}
-      {tab === "reports" && <ReportsTab />}
-      {tab === "billing" && <BillingTab />}
-    </div>
+    <PortalShell
+      agencyName={ctx.workspace_name}
+      email={ctx.email}
+      topRight={
+        <>
+          <ThemeToggle />
+          {!DEV_AUTH && <UserButton />}
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <BillingBanner />
+        <Tabs tabs={TABS} value={tab} onChange={setTab} />
+        {tab === "cases" && <CasesTab />}
+        {tab === "subjects" && <SubjectsTab />}
+        {tab === "needs" && <NeedsTab />}
+        {tab === "reports" && <ReportsTab />}
+        {tab === "billing" && <BillingTab />}
+      </div>
+    </PortalShell>
   );
 }
 
@@ -94,7 +122,7 @@ function BillingBanner() {
   if (!data) return null;
   if (data.suspended)
     return (
-      <div className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
+      <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
         Billing is suspended. New monitoring and new subjects are paused — work on existing cases
         continues. {data.billing_contact_email ?? "Your billing contact"} can bring billing current
         under the Billing tab.
@@ -102,7 +130,7 @@ function BillingBanner() {
     );
   if (data.in_grace)
     return (
-      <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-800">
+      <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
         A payment is overdue. Please update billing before the grace period ends
         {data.grace_until ? ` (${data.grace_until.slice(0, 10)})` : ""}.
       </div>
@@ -126,7 +154,7 @@ function BillingTab() {
       const { url } = await portalCreateCheckout(await getToken(), plan, cadence);
       await go(url);
     } catch (e) {
-      setMsg(String(e));
+      setMsg(errorText(e));
     }
   };
   const manage = async () => {
@@ -135,72 +163,64 @@ function BillingTab() {
       const { url } = await portalOpenCustomerPortal(await getToken());
       await go(url);
     } catch (e) {
-      setMsg(String(e));
+      setMsg(errorText(e));
     }
   };
 
-  if (error) return <p className="text-red-600">{error}</p>;
-  if (!data) return <p className="text-gray-500">Loading…</p>;
+  if (error) return <ErrorNote message={error} />;
+  if (!data) return <SkeletonRows rows={3} />;
 
   return (
-    <div className="space-y-3">
-      <dl className="text-sm">
-        <div className="flex gap-2">
-          <dt className="text-gray-500">Plan</dt>
-          <dd>
+    <Card title="Billing">
+      <dl className="mb-4 grid grid-cols-2 gap-3 text-sm sm:max-w-md">
+        <div>
+          <dt className="text-xs text-fg-muted">Plan</dt>
+          <dd className="font-medium">
             {data.plan_tier} ({data.cadence}) — {data.status}
           </dd>
         </div>
-        <div className="flex gap-2">
-          <dt className="text-gray-500">Talents billed</dt>
-          <dd>{data.quantity}</dd>
+        <div>
+          <dt className="text-xs text-fg-muted">Talents billed</dt>
+          <dd className="font-medium">{data.quantity}</dd>
         </div>
       </dl>
 
       {!data.is_billing_contact ? (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-fg-muted">
           {data.billing_contact_email
             ? `${data.billing_contact_email} manages billing for this workspace.`
             : "A billing contact has not been designated yet. Ask VisionGuard to set one."}
         </p>
       ) : (
-        <div className="space-y-2 rounded border border-gray-200 p-3">
+        <div className="space-y-3">
           {!data.has_subscription && (
-            <div className="flex items-center gap-2">
-              <select
-                className="border p-1 text-sm"
+            <div className="flex flex-wrap items-end gap-2">
+              <Select
+                label="Plan"
                 value={plan}
                 onChange={(e) => setPlan(e.target.value as BillingPlanTier)}
               >
                 <option value="core">Core</option>
                 <option value="priority">Priority</option>
-              </select>
-              <select
-                className="border p-1 text-sm"
+              </Select>
+              <Select
+                label="Cadence"
                 value={cadence}
                 onChange={(e) => setCadence(e.target.value as BillingCadence)}
               >
                 <option value="monthly">Monthly</option>
                 <option value="annual">Annual (2 months free)</option>
-              </select>
-              <button
-                className="rounded bg-blue-700 px-2 py-1 text-sm text-white"
-                onClick={() => void subscribe()}
-              >
-                Subscribe
-              </button>
+              </Select>
+              <Button onClick={() => void subscribe()}>Subscribe</Button>
             </div>
           )}
-          <button
-            className="rounded border border-gray-300 px-2 py-1 text-sm"
-            onClick={() => void manage()}
-          >
+          <Button variant="secondary" onClick={() => void manage()}>
             Manage billing (card, ACH, invoices)
-          </button>
+          </Button>
         </div>
       )}
-      {msg && <p className="text-xs text-red-600">{msg}</p>}
-    </div>
+      {msg && <ErrorNote message={msg} className="mt-2" />}
+    </Card>
   );
 }
 
@@ -214,7 +234,7 @@ function useAsync<T>(load: (token: string) => Promise<T>) {
     try {
       setData(await load(await getToken()));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }, [getToken]);
   useEffect(() => {
@@ -223,71 +243,95 @@ function useAsync<T>(load: (token: string) => Promise<T>) {
   return { data, error, reload };
 }
 
+function ErrorNote({ message, className }: { message: string; className?: string }) {
+  return (
+    <p className={`text-sm text-red-600 dark:text-red-400 ${className ?? ""}`}>{message}</p>
+  );
+}
+
 function CasesTab() {
   const { data: cases, error } = useAsync(listPortalCases);
   const [open, setOpen] = useState<number | null>(null);
-  if (error) return <p className="text-red-600">{error}</p>;
-  if (!cases) return <p className="text-gray-500">Loading…</p>;
+  if (error) return <ErrorNote message={error} />;
+  if (!cases) return <SkeletonRows rows={4} />;
   if (open !== null) return <CaseDetail caseId={open} onBack={() => setOpen(null)} />;
-  if (cases.length === 0) return <p className="text-gray-500">No cases yet.</p>;
+  if (cases.length === 0)
+    return <EmptyState title="No cases yet" description="Enforcement activity will appear here." />;
   return (
-    <ul className="divide-y divide-gray-100">
-      {cases.map((c: PortalCase) => (
-        <li key={c.id} className="flex items-center justify-between py-2">
-          <div>
-            <button className="text-blue-700" onClick={() => setOpen(c.id)}>
+    <Card bodyClassName="p-0">
+      <ul className="divide-y divide-line">
+        {cases.map((c: PortalCase) => (
+          <li key={c.id} className="flex items-center gap-3 px-4 py-3">
+            <button
+              className="text-sm font-semibold text-primary hover:underline"
+              onClick={() => setOpen(c.id)}
+            >
               Case #{c.id}
             </button>
-            <span className="ml-2 text-sm text-gray-500">{c.claim_type}</span>
-            {c.display_url && (
-              <span className="ml-2 text-xs text-gray-400">{c.display_url}</span>
-            )}
-          </div>
-          <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">{c.status}</span>
-        </li>
-      ))}
-    </ul>
+            <span className="text-xs text-fg-muted">{c.claim_type}</span>
+            {c.display_url && <span className="truncate text-xs text-fg-muted">{c.display_url}</span>}
+            <span className="ml-auto">
+              <StatusBadge status={c.status as CaseStatus} />
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
 function CaseDetail({ caseId, onBack }: { caseId: number; onBack: () => void }) {
   const { data, error } = useAsync<PortalCaseDetail>((t) => getPortalCase(t, caseId));
-  if (error) return <p className="text-red-600">{error}</p>;
-  if (!data) return <p className="text-gray-500">Loading…</p>;
+  if (error) return <ErrorNote message={error} />;
+  if (!data) return <SkeletonRows rows={4} />;
   return (
-    <div className="space-y-2">
-      <button className="text-sm text-blue-700" onClick={onBack}>
+    <div className="space-y-3">
+      <Button variant="ghost" size="sm" onClick={onBack}>
         ← Back
-      </button>
-      <h2 className="text-lg font-semibold">
-        Case #{data.case.id} — {data.case.status}
-      </h2>
-      <ol className="space-y-1 text-sm">
-        {data.timeline.map((e, i) => (
-          <li key={i} className="text-gray-600">
-            {e.from_status ?? "—"} → {e.to_status ?? "—"}{" "}
-            <span className="text-gray-400">{e.created_at.slice(0, 10)}</span>
-          </li>
-        ))}
-      </ol>
+      </Button>
+      <Card
+        title={
+          <span className="flex items-center gap-2">
+            Case #{data.case.id}
+            <StatusBadge status={data.case.status as CaseStatus} />
+          </span>
+        }
+      >
+        <ol className="space-y-1 text-sm">
+          {data.timeline.map((e, i) => (
+            <li key={i} className="flex items-center gap-2 text-fg-muted">
+              <span>
+                {e.from_status ?? "—"} → {e.to_status ?? "—"}
+              </span>
+              <span className="text-xs">{e.created_at.slice(0, 10)}</span>
+            </li>
+          ))}
+        </ol>
+      </Card>
     </div>
   );
 }
 
 function SubjectsTab() {
   const { data: subjects, error } = useAsync(listPortalSubjects);
-  if (error) return <p className="text-red-600">{error}</p>;
-  if (!subjects) return <p className="text-gray-500">Loading…</p>;
+  if (error) return <ErrorNote message={error} />;
+  if (!subjects) return <SkeletonRows rows={4} />;
   return (
     <div className="space-y-4">
-      <ul className="divide-y divide-gray-100">
-        {subjects.map((s: PortalSubject) => (
-          <li key={s.id} className="py-2">
-            <span className="font-medium">{s.legal_name}</span>{" "}
-            <span className="text-xs text-gray-400">{s.status}</span>
-          </li>
-        ))}
-      </ul>
+      {subjects.length === 0 ? (
+        <EmptyState title="No subjects yet" description="VisionGuard adds the talents it protects." />
+      ) : (
+        <Card bodyClassName="p-0">
+          <ul className="divide-y divide-line">
+            {subjects.map((s: PortalSubject) => (
+              <li key={s.id} className="flex items-center gap-2 px-4 py-3">
+                <span className="text-sm font-medium">{s.legal_name}</span>
+                <span className="text-xs text-fg-muted">{s.status}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
       <TipForm subjects={subjects} />
     </div>
   );
@@ -295,6 +339,7 @@ function SubjectsTab() {
 
 function TipForm({ subjects }: { subjects: PortalSubject[] }) {
   const getToken = useToken();
+  const { toast } = useToast();
   const [subjectId, setSubjectId] = useState<number | "">("");
   const [url, setUrl] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
@@ -302,57 +347,55 @@ function TipForm({ subjects }: { subjects: PortalSubject[] }) {
     setMsg(null);
     try {
       const r = await submitPortalTip(await getToken(), Number(subjectId), url);
-      setMsg(r.detail);
+      toast(r.detail, "success");
       setUrl("");
     } catch (e) {
-      setMsg(String(e));
+      setMsg(errorText(e));
     }
   };
   return (
-    <form
-      className="space-y-2 rounded border border-gray-200 p-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void submit();
-      }}
-    >
-      <h3 className="text-sm font-semibold">Submit a URL tip</h3>
-      <select
-        className="block w-64 border p-1"
-        value={subjectId}
-        onChange={(e) => setSubjectId(e.target.value ? Number(e.target.value) : "")}
+    <Card title="Submit a URL tip">
+      <form
+        className="space-y-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
       >
-        <option value="">Choose a subject…</option>
-        {subjects.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.legal_name}
-          </option>
-        ))}
-      </select>
-      <input
-        className="block w-full border p-1"
-        placeholder="https://…"
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-      />
-      <button
-        type="submit"
-        disabled={!subjectId || !url}
-        className="rounded bg-blue-700 px-2 py-1 text-white disabled:opacity-50"
-      >
-        Send tip
-      </button>
-      {msg && <p className="text-xs text-gray-600">{msg}</p>}
-    </form>
+        <Select
+          label="Subject"
+          className="sm:max-w-xs"
+          value={subjectId}
+          onChange={(e) => setSubjectId(e.target.value ? Number(e.target.value) : "")}
+        >
+          <option value="">Choose a subject…</option>
+          {subjects.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.legal_name}
+            </option>
+          ))}
+        </Select>
+        <Input
+          label="URL"
+          placeholder="https://…"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+        <Button type="submit" disabled={!subjectId || !url}>
+          Send tip
+        </Button>
+        {msg && <ErrorNote message={msg} />}
+      </form>
+    </Card>
   );
 }
 
 function NeedsTab() {
   const { data: needs, error, reload } = useAsync(listPortalNeeds);
-  if (error) return <p className="text-red-600">{error}</p>;
-  if (!needs) return <p className="text-gray-500">Loading…</p>;
+  if (error) return <ErrorNote message={error} />;
+  if (!needs) return <SkeletonRows rows={3} />;
   if (needs.length === 0)
-    return <p className="text-gray-500">Nothing needed from you right now.</p>;
+    return <EmptyState title="You’re all caught up" description="Nothing is needed from you right now." />;
   return (
     <ul className="space-y-3">
       {needs.map((n: PortalNeed) => (
@@ -366,6 +409,7 @@ function NeedsTab() {
 
 function NeedItem({ need, onDone }: { need: PortalNeed; onDone: () => void }) {
   const getToken = useToken();
+  const { toast } = useToast();
   const [body, setBody] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -373,43 +417,40 @@ function NeedItem({ need, onDone }: { need: PortalNeed; onDone: () => void }) {
     setMsg(null);
     try {
       await answerPortalNeed(await getToken(), need.subject_id, need.need_type, body, file);
-      setMsg("Sent for staff review.");
+      toast("Sent for staff review.", "success");
       onDone();
     } catch (e) {
-      setMsg(String(e));
+      setMsg(errorText(e));
     }
   };
   return (
-    <form
-      className="space-y-2 rounded border border-gray-200 p-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void submit();
-      }}
-    >
-      <p className="text-sm font-medium">
-        {need.subject_name}: {need.label}
-      </p>
-      <textarea
-        className="block w-full border p-1"
-        placeholder="Add a note (optional if you attach a document)"
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-      />
-      <input
-        type="file"
-        accept="application/pdf"
-        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-      />
-      <button
-        type="submit"
-        disabled={!body && !file}
-        className="rounded bg-blue-700 px-2 py-1 text-white disabled:opacity-50"
+    <Card title={`${need.subject_name}: ${need.label}`}>
+      <form
+        className="space-y-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
       >
-        Submit answer
-      </button>
-      {msg && <p className="text-xs text-gray-600">{msg}</p>}
-    </form>
+        <Textarea
+          aria-label="Note"
+          placeholder="Add a note (optional if you attach a document)"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+        />
+        <input
+          type="file"
+          accept="application/pdf"
+          aria-label="Attach a PDF"
+          className="block text-sm text-fg-muted file:mr-3 file:rounded-md file:border-0 file:bg-surface-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-fg"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
+        <Button type="submit" disabled={!body && !file}>
+          Submit answer
+        </Button>
+        {msg && <ErrorNote message={msg} />}
+      </form>
+    </Card>
   );
 }
 
@@ -425,21 +466,24 @@ function ReportsTab() {
     a.click();
     URL.revokeObjectURL(href);
   };
-  if (error) return <p className="text-red-600">{error}</p>;
-  if (!reports) return <p className="text-gray-500">Loading…</p>;
-  if (reports.length === 0) return <p className="text-gray-500">No reports yet.</p>;
+  if (error) return <ErrorNote message={error} />;
+  if (!reports) return <SkeletonRows rows={3} />;
+  if (reports.length === 0)
+    return <EmptyState title="No reports yet" description="Monthly enforcement reports will appear here." />;
   return (
-    <ul className="divide-y divide-gray-100">
-      {reports.map((r: PortalReport) => (
-        <li key={r.id} className="flex items-center justify-between py-2">
-          <span className="text-sm">
-            {r.period_start} → {r.period_end}
-          </span>
-          <button className="text-blue-700" onClick={() => void download(r)}>
-            Download PDF
-          </button>
-        </li>
-      ))}
-    </ul>
+    <Card bodyClassName="p-0">
+      <ul className="divide-y divide-line">
+        {reports.map((r: PortalReport) => (
+          <li key={r.id} className="flex items-center justify-between px-4 py-3">
+            <span className="text-sm">
+              {r.period_start} → {r.period_end}
+            </span>
+            <Button variant="secondary" size="sm" onClick={() => void download(r)}>
+              Download PDF
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }

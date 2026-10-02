@@ -4,7 +4,7 @@ import type { ClaimSupportResponse } from "../api";
 export function ClaimSupportPanel({ data }: { data: ClaimSupportResponse }) {
   const bio = data.biometrics;
   return (
-    <section className="space-y-3 rounded border border-gray-200 p-3">
+    <section className="space-y-3 rounded border border-line p-3">
       <div className="flex items-center justify-between">
         <h3 className="font-medium">Supported claim types</h3>
         <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
@@ -21,7 +21,7 @@ export function ClaimSupportPanel({ data }: { data: ClaimSupportResponse }) {
         )}
       </p>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-fg-muted">
         “supported” means the legal-basis records are present — <strong>not cleared to
         file</strong>. Identity verification, fair-use and allowlist checks are still pending.
       </p>
@@ -33,7 +33,7 @@ export function ClaimSupportPanel({ data }: { data: ClaimSupportResponse }) {
             {c.supported ? (
               <span className="text-green-700">supported</span>
             ) : (
-              <span className="text-gray-600">
+              <span className="text-fg-muted">
                 unsupported — needs {c.missing.join("; ")}
               </span>
             )}
@@ -41,13 +41,13 @@ export function ClaimSupportPanel({ data }: { data: ClaimSupportResponse }) {
         ))}
       </ul>
 
-      <div className="rounded bg-gray-50 p-2 text-xs text-gray-600">
+      <div className="rounded bg-surface-muted p-2 text-xs text-fg-muted">
         <p>
           Biometric features:{" "}
           {bio.biometric_features_enabled ? (
             <span className="text-green-700">enabled</span>
           ) : (
-            <span className="text-gray-700">disabled</span>
+            <span className="text-fg">disabled</span>
           )}{" "}
           (active biometric consent: {bio.active_biometric_consent ? "yes" : "no"};
           biometrics_blocked: {bio.biometrics_blocked ? "yes" : "no"})

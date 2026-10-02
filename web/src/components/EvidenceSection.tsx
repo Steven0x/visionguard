@@ -8,8 +8,10 @@ import {
   uploadEvidence,
   verifyEvidence,
 } from "../api";
+import { errorText } from "../errors";
 import { useToken } from "../useToken";
 import { EvidenceStatusBadge } from "./EvidenceStatusBadge";
+import { Button, Card, Input, Modal, Textarea } from "./ui";
 
 export function EvidenceSection({
   workspaceId,
@@ -24,12 +26,15 @@ export function EvidenceSection({
   const [captures, setCaptures] = useState<EvidenceCapture[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [verifyMsg, setVerifyMsg] = useState<Record<number, string>>({});
+  const [packOpen, setPackOpen] = useState(false);
+  const [packReason, setPackReason] = useState("");
+  const [packSensitive, setPackSensitive] = useState(false);
 
   const reload = useCallback(async () => {
     try {
       setCaptures(await listEvidence(await getToken(), workspaceId, caseId));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   }, [getToken, workspaceId, caseId]);
 
@@ -43,7 +48,7 @@ export function EvidenceSection({
       await fn();
       await reload();
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   };
 
@@ -53,49 +58,59 @@ export function EvidenceSection({
       const r = await verifyEvidence(await getToken(), workspaceId, caseId, eid, "manual review");
       setVerifyMsg((m) => ({ ...m, [eid]: r.ok ? "verified ✓" : "VERIFICATION FAILED" }));
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     }
   };
 
   const openArtifact = async (eid: number, name: string) => {
     const { url } = await evidenceArtifactUrl(
-      await getToken(), workspaceId, caseId, eid, name, "review",
+      await getToken(),
+      workspaceId,
+      caseId,
+      eid,
+      name,
+      "review",
     );
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
-  const openPack = () => {
-    const reason = window.prompt("Reason for exporting the evidence pack (logged):");
-    if (!reason) return;
-    const includeSensitive = window.confirm(
-      "Include sensitive screenshots un-blurred? (logged). Cancel = blurred.",
-    );
+  const exportPack = () => {
+    if (!packReason.trim()) return;
     window.open(
-      evidencePackUrl(workspaceId, caseId, reason, includeSensitive), "_blank",
+      evidencePackUrl(workspaceId, caseId, packReason.trim(), packSensitive),
+      "_blank",
       "noopener,noreferrer",
     );
+    setPackOpen(false);
+    setPackReason("");
+    setPackSensitive(false);
   };
 
   return (
-    <section className="space-y-2" data-testid="evidence-section">
-      <div className="flex items-center gap-3">
-        <h4 className="font-medium">Evidence ({captures.length})</h4>
-        <button
-          className="rounded bg-gray-800 px-2 py-1 text-xs text-white"
-          onClick={() => act(async () => recapture(await getToken(), workspaceId, caseId))}
-        >
-          Recapture
-        </button>
-        {isAdmin && (
-          <button className="rounded bg-gray-700 px-2 py-1 text-xs text-white" onClick={openPack}>
-            Download pack (PDF)
-          </button>
-        )}
-      </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+    <Card
+      data-testid="evidence-section"
+      title={`Evidence (${captures.length})`}
+      actions={
+        <>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => act(async () => recapture(await getToken(), workspaceId, caseId))}
+          >
+            Recapture
+          </Button>
+          {isAdmin && (
+            <Button variant="secondary" size="sm" onClick={() => setPackOpen(true)}>
+              Download pack (PDF)
+            </Button>
+          )}
+        </>
+      }
+    >
+      {error && <p className="mb-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <form
-        className="flex items-center gap-2 text-sm"
+        className="mb-3 flex flex-wrap items-center gap-2 text-sm"
         onSubmit={(e) => {
           e.preventDefault();
           const form = e.currentTarget;
@@ -110,32 +125,47 @@ export function EvidenceSection({
           }
         }}
       >
-        <span className="text-gray-500">Manual upload:</span>
-        <input name="file" type="file" accept="image/png,image/jpeg,image/webp" required />
-        <input name="note" placeholder="attestation (required)" required className="border p-1" />
-        <button className="rounded bg-blue-700 px-2 py-1 text-white">Upload</button>
+        <span className="text-fg-muted">Manual upload:</span>
+        <input
+          name="file"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          required
+          aria-label="Evidence file"
+          className="text-sm text-fg-muted file:mr-2 file:rounded-md file:border-0 file:bg-surface-muted file:px-2 file:py-1 file:text-sm file:font-medium file:text-fg"
+        />
+        <Input name="note" aria-label="Attestation" placeholder="attestation (required)" required />
+        <Button type="submit">Upload</Button>
       </form>
 
       <ul className="space-y-1 text-xs">
         {captures.map((c) => (
-          <li key={c.id} className="flex flex-wrap items-center gap-2 border-t border-gray-100 py-1">
+          <li key={c.id} className="flex flex-wrap items-center gap-2 border-t border-line py-1.5 first:border-0">
             <EvidenceStatusBadge capture={c} />
             <span>{c.kind}</span>
-            {c.error && <span className="text-red-600">{c.error}</span>}
-            <span className="text-gray-400">{(c.capture_finished_at ?? c.created_at).slice(0, 19)}</span>
+            {c.error && <span className="text-red-600 dark:text-red-400">{c.error}</span>}
+            <span className="text-fg-muted">
+              {(c.capture_finished_at ?? c.created_at).slice(0, 19)}
+            </span>
             {c.status === "sealed" && (
               <>
-                <button className="text-blue-700" onClick={() => void openArtifact(c.id, "screenshot.png")}>
+                <Button variant="ghost" size="sm" onClick={() => void openArtifact(c.id, "screenshot.png")}>
                   screenshot
-                </button>
-                <button className="text-blue-700" onClick={() => void openArtifact(c.id, "manifest.json")}>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => void openArtifact(c.id, "manifest.json")}>
                   manifest
-                </button>
-                <button className="text-blue-700" onClick={() => void doVerify(c.id)}>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => void doVerify(c.id)}>
                   verify
-                </button>
+                </Button>
                 {verifyMsg[c.id] && (
-                  <span className={verifyMsg[c.id].includes("FAIL") ? "text-red-600" : "text-green-700"}>
+                  <span
+                    className={
+                      verifyMsg[c.id].includes("FAIL")
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-emerald-700 dark:text-emerald-400"
+                    }
+                  >
                     {verifyMsg[c.id]}
                   </span>
                 )}
@@ -144,6 +174,39 @@ export function EvidenceSection({
           </li>
         ))}
       </ul>
-    </section>
+
+      <Modal
+        open={packOpen}
+        onClose={() => setPackOpen(false)}
+        title="Export evidence pack"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPackOpen(false)}>
+              Cancel
+            </Button>
+            <Button disabled={!packReason.trim()} onClick={exportPack}>
+              Export PDF
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Textarea
+            label="Reason for export (logged)"
+            value={packReason}
+            onChange={(e) => setPackReason(e.target.value)}
+            autoFocus
+          />
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={packSensitive}
+              onChange={(e) => setPackSensitive(e.target.checked)}
+            />
+            Include sensitive screenshots un-blurred (logged)
+          </label>
+        </div>
+      </Modal>
+    </Card>
   );
 }
