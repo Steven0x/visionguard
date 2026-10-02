@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import warnings
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 # Reject absurd pixel counts (decompression bombs) explicitly, and make Pillow's warning fatal.
 Image.MAX_IMAGE_PIXELS = 50_000_000
@@ -25,9 +25,14 @@ def validate_and_load(data: bytes) -> Image.Image:
     try:
         image = Image.open(io.BytesIO(data))
         image.load()  # force a full decode; raises on truncation, corruption, or a bomb
+        # Bake in EXIF orientation so every derived artifact (thumbnail, pHash, embedding) sees
+        # the image the way a human would — a phone photo tagged "rotate 90°" must not fingerprint
+        # or display sideways. exif_transpose removes the orientation tag and is a no-op when none
+        # is present. The stored original bytes (and their sha256 identity) are untouched.
+        oriented = ImageOps.exif_transpose(image)
     except Exception as exc:  # DecompressionBombError/Warning, UnidentifiedImageError, OSError…
         raise InvalidImage(f"invalid or unsafe image: {exc}") from exc
-    return image
+    return oriented
 
 
 def make_thumbnail(image: Image.Image, max_px: int = 256) -> bytes:
