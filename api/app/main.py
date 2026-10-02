@@ -18,6 +18,7 @@ from api.app.obs.readiness import verify_deployed_readiness
 from api.app.obs.sentry import init_sentry
 from api.app.routers import (
     assets,
+    billing,
     cases,
     csam,
     discovery,
@@ -33,6 +34,7 @@ from api.app.routers import (
     subjects,
     workspaces,
 )
+from api.app.services.billing import BillingError, BillingSuspended
 
 logger = logging.getLogger("visionguard")
 
@@ -89,6 +91,15 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.exception_handler(BillingSuspended)
+    async def _billing_suspended(_request: Request, exc: BillingSuspended) -> JSONResponse:
+        # New-work gate only (new subjects / new discovery). Existing filed work is never blocked.
+        return JSONResponse(status_code=402, content={"detail": str(exc)})
+
+    @app.exception_handler(BillingError)
+    async def _billing_error(_request: Request, exc: BillingError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
     app.include_router(health.router)
     app.include_router(me.router)
     app.include_router(workspaces.router)
@@ -106,6 +117,9 @@ def create_app() -> FastAPI:
     app.include_router(reports.router)
     app.include_router(portal.router)
     app.include_router(portal.staff_router)
+    app.include_router(billing.webhook_router)
+    app.include_router(billing.admin_router)
+    app.include_router(billing.portal_router)
     return app
 
 

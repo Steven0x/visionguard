@@ -243,3 +243,21 @@ def archive_subject(
         actor_staff_id=staff.id,
         subject=subject,
     )
+
+
+@router.post("/{subject_id}/reactivate", response_model=SubjectOut)
+def reactivate_subject(
+    subject_id: int,
+    workspace: Workspace = Depends(require_workspace_access),
+    staff: Staff = Depends(_STAFF),
+    session: Session = Depends(get_tenant_session),
+) -> Subject:
+    subject = subj_service.get_subject(session, subject_id)
+    if subject is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="subject not found")
+    return subj_service.reactivate_subject(
+        session,
+        workspace_id=workspace.id,
+        actor_staff_id=staff.id,
+        subject=subject,
+    )

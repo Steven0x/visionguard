@@ -23,6 +23,7 @@ from api.app.constants import (
     US_STATES,
 )
 from api.app.models.subjects import Subject, SubjectStatus
+from api.app.services import billing as billing_svc
 
 CSV_COLUMNS = ("legal_name", "stage_names", "handles", "residence_state", "notes")
 _MAX_LEGAL_NAME = 200
@@ -108,6 +109,8 @@ def create_subject(
     residence_state: str | None = None,
     notes: str | None = None,
 ) -> Subject:
+    # Billing gate: a suspended workspace may not add NEW subjects (existing work is unaffected).
+    billing_svc.enforce_can_add_subject(workspace_id)
     residence = normalize_residence(residence_state)
     subject = Subject(
         legal_name=legal_name.strip(),
@@ -128,6 +131,8 @@ def create_subject(
         entity_type="subject",
         entity_id=str(subject.id),
     )
+    # Per-subject billing: re-sync the Stripe quantity once this add is committed.
+    billing_svc.enqueue_quantity_sync(session, workspace_id)
     return subject
 
 
@@ -180,6 +185,33 @@ def archive_subject(
         entity_type="subject",
         entity_id=str(subject.id),
     )
+    # Archiving reduces the active count → re-sync the Stripe quantity (respecting the min).
+    billing_svc.enqueue_quantity_sync(session, workspace_id)
+    return subject
+
+
+def reactivate_subject(
+    session: Session,
+    *,
+    workspace_id: int,
+    actor_staff_id: int | None,
+    subject: Subject,
+) -> Subject:
+    """Return an archived subject to active. Gated + billed like a new subject (it re-enters the
+    active count)."""
+    # Reactivation re-adds a billable subject → suspended workspaces may not.
+    billing_svc.enforce_can_add_subject(workspace_id)
+    subject.status = SubjectStatus.active
+    session.flush()
+    record_audit(
+        session,
+        workspace_id=workspace_id,
+        actor_staff_id=actor_staff_id,
+        action="subject.reactivated",
+        entity_type="subject",
+        entity_id=str(subject.id),
+    )
+    billing_svc.enqueue_quantity_sync(session, workspace_id)
     return subject
 
 
@@ -298,6 +330,8 @@ def import_commit(
     If any row has errors, raises ValueError-like via the rows (caller maps to 422). Uses the
     active subjects already in this workspace for duplicate checks.
     """
+    # Billing gate: a suspended workspace may not add NEW subjects (import is all-or-nothing).
+    billing_svc.enforce_can_add_subject(workspace_id)
     existing_active = list_subjects(session, status_filter="active")
     rows = parse_and_validate(raw, existing_active)
     if any(row.errors for row in rows):
@@ -324,6 +358,7 @@ def import_commit(
         entity_type="subject",
         meta={"count": len(rows)},
     )
+    billing_svc.enqueue_quantity_sync(session, workspace_id)
     return len(rows)
 
 

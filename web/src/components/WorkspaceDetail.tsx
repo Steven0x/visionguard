@@ -11,6 +11,7 @@ import {
   type WorkspaceDetail as Detail,
 } from "../api";
 import { useToken } from "../useToken";
+import { BillingPanel } from "./BillingPanel";
 import { CasesSection } from "./CasesSection";
 import { DiscoverySettingsEditor } from "./DiscoverySettingsEditor";
 import { FollowUpsSection } from "./FollowUpsSection";
@@ -106,6 +107,7 @@ export function WorkspaceDetail({
       {isAdmin && <WorkspaceEditor detail={detail} onSaved={reload} />}
       {isAdmin && <AllowlistEditor detail={detail} onChanged={reload} />}
       {isAdmin && <DiscoverySettingsEditor workspaceId={workspaceId} />}
+      {isAdmin && <BillingPanel workspaceId={workspaceId} />}
 
       <ReviewInbox
         workspaceId={workspaceId}

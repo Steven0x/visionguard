@@ -13,7 +13,17 @@ from api.app.models.public import Workspace
 from api.tests.portalhelpers import make_agency_user
 
 # Unauthenticated / non-staff routes that are not expected to 403.
-_UNAUTH = {"/healthz", "/readyz", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+# /billing/webhook is unauthenticated BY DESIGN (Stripe signature-gated, no staff/agency identity),
+# so it is explicitly allowlisted here (it returns 400 on a bad signature, never 403).
+_UNAUTH = {
+    "/healthz",
+    "/readyz",
+    "/openapi.json",
+    "/docs",
+    "/docs/oauth2-redirect",
+    "/redoc",
+    "/billing/webhook",
+}
 
 
 def _concrete(path: str, workspace_id: int) -> str:

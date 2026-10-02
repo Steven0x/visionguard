@@ -174,6 +174,26 @@ class Settings(BaseSettings):
     email_reply_to: str = ""
     email_rate_limit_per_min: int = 30
 
+    # Billing (Slice 13). `fake` records calls in-memory (dev/test, never the network); `stripe`
+    # talks to Stripe and is required in deployments (guarded below). All PRICING lives on Stripe
+    # Price objects referenced by these IDs — our code only sets a quantity and attaches coupons.
+    billing_backend: str = "fake"  # "fake" (dev/test) | "stripe" (deployments)
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_price_core_monthly: str = ""
+    stripe_price_core_annual: str = ""
+    stripe_price_priority_monthly: str = ""
+    stripe_price_priority_annual: str = ""
+    stripe_price_onboarding_audit: str = ""
+    stripe_coupon_design_partner: str = ""
+    # The Billing-Portal configuration that DISABLES subscription quantity/plan edits (set via the
+    # Stripe API). Quantity is ours to derive; plan changes go through staff.
+    stripe_portal_configuration_id: str = ""
+    # Pass `automatic_tax` to Checkout. Off until sales-tax nexus/registration is confirmed.
+    stripe_automatic_tax: bool = False
+    billing_min_quantity: int = 5  # subscription quantity floor (per-subject plans)
+    billing_grace_days: int = 14  # past_due grace before suspension
+
     @property
     def allowed_origin_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
@@ -261,6 +281,23 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "EMAIL_BACKEND=sendgrid requires SENDGRID_API_KEY and EMAIL_FROM."
                 )
+
+        # Billing: the fake backend never talks to Stripe, so it's dev/test only. And a LIVE
+        # Stripe secret key must never be used outside production — a misconfigured staging/dev
+        # must not charge real cards. (Production is required to use live keys; see the deployed
+        # guard.) Webhook secrets (`whsec_`) are mode-agnostic, so only the secret key is checked.
+        if self.billing_backend not in ("fake", "stripe"):
+            raise ValueError("BILLING_BACKEND must be 'fake' or 'stripe'.")
+        if self.billing_backend == "fake" and self.app_env not in _TEST_AUTH_ALLOWED_ENVS:
+            raise ValueError(
+                "BILLING_BACKEND=fake is only allowed when APP_ENV is 'dev' or 'test' "
+                f"(got APP_ENV={self.app_env!r}). Refusing to start."
+            )
+        if self.stripe_secret_key.startswith("sk_live_") and not self.is_production:
+            raise ValueError(
+                "A live Stripe secret key (sk_live_…) is only allowed in production "
+                f"(got APP_ENV={self.app_env!r}). Refusing to start."
+            )
         return self
 
     @model_validator(mode="after")
@@ -327,6 +364,45 @@ class Settings(BaseSettings):
             problems.append("EMAIL_BACKEND must be 'sendgrid' in production.")
         if self.app_env == "staging" and self.email_backend != "outbox":
             problems.append("EMAIL_BACKEND must be 'outbox' in staging (fake email only).")
+
+        # Billing must be the real Stripe backend with all credentials + plan prices configured.
+        # Production uses LIVE keys; staging uses TEST keys (staging must never charge real cards).
+        if self.billing_backend != "stripe":
+            problems.append(
+                f"BILLING_BACKEND must be 'stripe' in a deployment (got {self.billing_backend!r})."
+            )
+        if not self.stripe_secret_key:
+            problems.append("STRIPE_SECRET_KEY is required in a deployment.")
+        if not self.stripe_webhook_secret:
+            problems.append("STRIPE_WEBHOOK_SECRET is required in a deployment.")
+        # The restricted Customer-Portal configuration (disables self-serve quantity/plan edits) is
+        # mandatory — without it Stripe falls back to the account default, which would let a billing
+        # contact change quantity/plan themselves (quantity is ours to derive; plan goes via staff).
+        if not self.stripe_portal_configuration_id:
+            problems.append(
+                "STRIPE_PORTAL_CONFIGURATION_ID is required in a deployment (the restricted "
+                "Customer-Portal config that disables self-serve quantity/plan changes)."
+            )
+        missing_prices = [
+            name
+            for name, value in (
+                ("STRIPE_PRICE_CORE_MONTHLY", self.stripe_price_core_monthly),
+                ("STRIPE_PRICE_CORE_ANNUAL", self.stripe_price_core_annual),
+                ("STRIPE_PRICE_PRIORITY_MONTHLY", self.stripe_price_priority_monthly),
+                ("STRIPE_PRICE_PRIORITY_ANNUAL", self.stripe_price_priority_annual),
+            )
+            if not value
+        ]
+        if missing_prices:
+            problems.append(
+                f"Stripe plan price IDs are required in a deployment: {missing_prices}."
+            )
+        if self.is_production and not self.stripe_secret_key.startswith("sk_live_"):
+            problems.append("STRIPE_SECRET_KEY must be a live key (sk_live_…) in production.")
+        if self.app_env == "staging" and not self.stripe_secret_key.startswith("sk_test_"):
+            problems.append(
+                "STRIPE_SECRET_KEY must be a test key (sk_test_…) in staging (no real cards)."
+            )
 
         # Production evidence retention floor (7 years) unless a documented override is set.
         if (

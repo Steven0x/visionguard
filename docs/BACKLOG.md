@@ -114,6 +114,9 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 > escalation queue; `none` (default) and errors fail closed. The remaining pre-production task
 > is the real PhotoDNA/Safer backend behind the same interface. See `docs/specs/evidence.md`,
 > ADR 0009 + 0010.
+> **Future CSAM scanner slice (when the real backend lands):** rasterize every PDF page and scan
+> the renders, in addition to embedded-image extraction (an image an extractor misses — flattened
+> into page content — must still be scanned).
 > **Delivered:** SSRF-safe browser egress (fetch-through-SafeFetcher + fulfill, no DNS rebind),
 > write-once object-locked evidence bucket, RFC 3161 timestamping (+ untimestamped retry beat),
 > chain-of-custody, `requires_evidence_pack()` filled (fresh sealed capture gates Filed),
@@ -247,6 +250,40 @@ agency user sees only the portal (not the staff console) and can tip/answer/down
 > PDF embedded-image CSAM scan (`pypdf`, `CsamSource.portal_upload`, quarantine prefix); daily tip
 > cap; agency excluded from assignee/approver/staff lists; role-routed web portal. See
 > `docs/specs/portal.md`, ADR 0015.
+
+## Slice 13: Billing (Stripe)
+
+- Per-workspace subscription billing, **Stripe hosted only** (Checkout to subscribe/pay, Customer
+  Portal for card/ACH/invoices/cancellation); we never touch payment data. ACH enabled alongside
+  card. All pricing lives on Stripe Price objects (config-driven price IDs) — the app never computes
+  amounts.
+- Plans: Core ($99) / Priority ($179) per active subject/month, min quantity 5; volume 15%-off-at-20
+  (Stripe volume tier); annual = 2 months free (separate annual prices); $1,500 onboarding audit
+  (one-time Checkout, admin-creditable toward month one); design-partner coupon (50%/3mo).
+- Quantity = active subjects, synced to Stripe idempotently on add/archive/reactivate (min 5, never
+  client-supplied); any drift is corrected to the derived value and audited.
+- Webhooks: signature-gated, idempotent on event id, out-of-order-safe (re-fetch the subscription
+  from Stripe, never trust payload state); explicitly allowlisted in the default-deny walk.
+- Plan state mirrored per workspace (status/plan/quantity/period end); Stripe is source of truth.
+  `billing_mode` = stripe | manual (existing workspaces migrate to manual; gates apply to stripe
+  only). Non-payment: past_due → grace (default 14d, banner) → suspend NEW subjects + NEW discovery
+  only; filed-case work, evidence, reports and portal reads are NEVER blocked and nothing is deleted.
+- Customer Portal configured to disallow quantity/plan edits. Daily reconciliation beat re-syncs
+  every stripe-mode workspace and logs drift. Feature limits (Priority flags, discovery frequency)
+  enforced from the mirror; admin per-workspace overrides (audited). Config guard requires live keys
+  in production, test keys in staging, and forbids live keys elsewhere.
+
+**Done when:** add/archive/reactivate drive the Stripe quantity; a forged/replayed webhook changes
+nothing; suspension blocks only new work while filed cases finish; the config guard refuses every
+bad billing config. **Agents:** reviewer, red-team.
+
+> **Delivered:** `workspace_billing` + `billing_events` (public, `0021_public`); `api/app/billing/*`
+> (`StripeClient` protocol + real + fake backends); `services/billing.py` (one place: derived
+> quantity, mirror sync, suspension gates, staff-admin actions, reconcile); `routers/billing.py`
+> (signature-gated webhook + admin + portal-billing-contact surface); `worker/billing.py`
+> (`sync_billing_quantity` + daily `reconcile_billing`). Gates wired into subjects
+> (create/import/reactivate → 402 when suspended) and discovery (dispatch skip + frequency cap;
+> intake blocked). See `docs/specs/billing.md`, ADR 0016.
 
 ---
 

@@ -66,4 +66,4 @@ Case states: `Discovered → Confirmed | Dismissed`, `Confirmed → Filed`, `Fil
 
 ## What not to build yet
 
-Billing, the full crawler fleet (start with provider APIs + manual URL intake), Brands mode, deepfake detection models, recovery/CCB automation, EU features. These are Phase 2+. (A **read-mostly agency portal** landed in Slice 12 — see `docs/specs/portal.md`; agency **self-signup/billing** is still deferred.)
+The full crawler fleet (start with provider APIs + manual URL intake), Brands mode, deepfake detection models, recovery/CCB automation, EU features. These are Phase 2+. (A **read-mostly agency portal** landed in Slice 12 — see `docs/specs/portal.md`. **Staff-managed Stripe billing** landed in Slice 13 — see `docs/specs/billing.md`; agency **self-signup** is still deferred.)

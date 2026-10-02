@@ -244,3 +244,43 @@ def auth_header() -> Callable[..., dict[str, str]]:
         return {"Authorization": f"Bearer {token}"}
 
     return _make
+
+
+@pytest.fixture
+def billing_fake(db: Fixtures):
+    """The fake Stripe backend with a fresh state + Stripe price/webhook settings for billing tests.
+
+    The backend is an lru_cache singleton, so we clear its in-memory state between tests and restore
+    the settings we mutate afterwards (settings are process-wide and lru_cached).
+    """
+    from api.app.billing import get_billing_client
+    from api.app.billing.fake_backend import FakeBillingBackend
+    from api.app.config import get_settings
+
+    fake = get_billing_client()
+    assert isinstance(fake, FakeBillingBackend)
+    for attr in (
+        "customers", "subscriptions", "prices", "credits", "coupons",
+        "quantity_sets", "checkouts", "portals",
+    ):
+        getattr(fake, attr).clear()
+    fake._seq = 0
+
+    settings = get_settings()
+    overrides = {
+        "stripe_webhook_secret": "whsec_test",
+        "stripe_price_core_monthly": "price_core_m",
+        "stripe_price_core_annual": "price_core_a",
+        "stripe_price_priority_monthly": "price_priority_m",
+        "stripe_price_priority_annual": "price_priority_a",
+        "stripe_price_onboarding_audit": "price_audit",
+        "stripe_coupon_design_partner": "coupon_dp",
+    }
+    saved = {k: getattr(settings, k) for k in overrides}
+    for k, v in overrides.items():
+        setattr(settings, k, v)
+    try:
+        yield fake
+    finally:
+        for k, v in saved.items():
+            setattr(settings, k, v)

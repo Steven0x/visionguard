@@ -43,10 +43,21 @@ def deployed_env(monkeypatch: pytest.MonkeyPatch, *, app_env: str = "production"
     monkeypatch.setenv("CAPTURE_BACKEND", "playwright")
     monkeypatch.setenv("TSA_BACKEND", "rfc3161")
     monkeypatch.setenv("STORAGE_BACKEND", "s3")
+    # Billing (Slice 13): a deployment requires the real Stripe backend + keys + all plan prices.
+    # Production uses live keys; staging uses test keys.
+    monkeypatch.setenv("BILLING_BACKEND", "stripe")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_fake")
+    monkeypatch.setenv("STRIPE_PRICE_CORE_MONTHLY", "price_core_m")
+    monkeypatch.setenv("STRIPE_PRICE_CORE_ANNUAL", "price_core_a")
+    monkeypatch.setenv("STRIPE_PRICE_PRIORITY_MONTHLY", "price_priority_m")
+    monkeypatch.setenv("STRIPE_PRICE_PRIORITY_ANNUAL", "price_priority_a")
+    monkeypatch.setenv("STRIPE_PORTAL_CONFIGURATION_ID", "bpc_fake")
     if app_env == "production":
         monkeypatch.setenv("EMAIL_BACKEND", "sendgrid")
         monkeypatch.setenv("SENDGRID_API_KEY", "SG.fake")
         monkeypatch.setenv("EMAIL_FROM", "notices@visionguard.example")
         monkeypatch.setenv("EVIDENCE_RETENTION_DAYS", "2555")
-    else:  # staging: fake email only
+        monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_live_fake")
+    else:  # staging: fake email only + Stripe TEST keys
         monkeypatch.setenv("EMAIL_BACKEND", "outbox")
+        monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_fake")

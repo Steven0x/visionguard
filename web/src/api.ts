@@ -1215,3 +1215,102 @@ export async function fetchPortalReportPdf(token: string, reportId: number): Pro
   if (!res.ok) throw new Error(`download failed (${res.status})`);
   return res.blob();
 }
+
+// ── Billing (Slice 13) ─────────────────────────────────────────────────────────
+// Pricing lives entirely in Stripe; the client only picks a plan + cadence and opens hosted
+// Checkout / Customer Portal. Quantity is derived server-side (never sent).
+export type BillingMode = "stripe" | "manual";
+export type BillingPlanTier = "none" | "core" | "priority";
+export type BillingCadence = "none" | "monthly" | "annual";
+export type BillingStatusValue =
+  | "none"
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled";
+
+export interface BillingStatus {
+  billing_mode: BillingMode;
+  status: BillingStatusValue;
+  plan_tier: BillingPlanTier;
+  cadence: BillingCadence;
+  quantity: number;
+  current_period_end: string | null;
+  grace_until: string | null;
+  in_grace: boolean;
+  suspended: boolean;
+  priority: boolean;
+  has_subscription: boolean;
+  billing_contact_staff_id?: number | null;
+  has_customer?: boolean;
+}
+
+export interface PortalBillingStatus extends BillingStatus {
+  is_billing_contact: boolean;
+  billing_contact_email: string | null;
+}
+
+// Staff admin
+export const getBilling = (token: string, wsId: number) =>
+  request<BillingStatus>(token, `/workspaces/${wsId}/billing`);
+
+export const setBillingMode = (token: string, wsId: number, mode: BillingMode) =>
+  request<BillingStatus>(token, `/workspaces/${wsId}/billing/mode`, {
+    method: "PUT",
+    body: JSON.stringify({ mode }),
+  });
+
+export const createBillingCheckout = (
+  token: string,
+  wsId: number,
+  planTier: BillingPlanTier,
+  cadence: BillingCadence,
+) =>
+  request<{ url: string }>(token, `/workspaces/${wsId}/billing/checkout`, {
+    method: "POST",
+    body: JSON.stringify({ plan_tier: planTier, cadence }),
+  });
+
+export const openBillingPortal = (token: string, wsId: number) =>
+  request<{ url: string }>(token, `/workspaces/${wsId}/billing/portal`, { method: "POST" });
+
+export const applyOnboardingCredit = (token: string, wsId: number) =>
+  request<BillingStatus>(token, `/workspaces/${wsId}/billing/onboarding-credit`, {
+    method: "POST",
+  });
+
+export const applyDesignPartnerCoupon = (token: string, wsId: number) =>
+  request<BillingStatus>(token, `/workspaces/${wsId}/billing/coupon`, { method: "POST" });
+
+export const setBillingOverride = (
+  token: string,
+  wsId: number,
+  body: { priority_override: boolean | null; discovery_frequency_override: string | null },
+) =>
+  request<BillingStatus>(token, `/workspaces/${wsId}/billing/override`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const setBillingContact = (token: string, wsId: number, staffId: number) =>
+  request<BillingStatus>(token, `/workspaces/${wsId}/billing/billing-contact`, {
+    method: "PUT",
+    body: JSON.stringify({ staff_id: staffId }),
+  });
+
+// Agency portal billing contact
+export const getPortalBilling = (token: string) =>
+  request<PortalBillingStatus>(token, "/portal/billing");
+
+export const portalCreateCheckout = (
+  token: string,
+  planTier: BillingPlanTier,
+  cadence: BillingCadence,
+) =>
+  request<{ url: string }>(token, "/portal/billing/checkout", {
+    method: "POST",
+    body: JSON.stringify({ plan_tier: planTier, cadence }),
+  });
+
+export const portalOpenCustomerPortal = (token: string) =>
+  request<{ url: string }>(token, "/portal/billing/portal", { method: "POST" });

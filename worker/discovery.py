@@ -24,6 +24,7 @@ from api.app.models.public import Workspace
 from api.app.models.subjects import Subject, SubjectStatus
 from api.app.providers import get_keyword_provider, get_reverse_image_providers
 from api.app.providers.base import ProviderResult
+from api.app.services import billing as billing_svc
 from api.app.services import discovery as svc
 from api.app.services.claim_support import subject_enforcement
 from api.app.services.keywords import identifiers as get_identifiers
@@ -214,6 +215,14 @@ def dispatch_scheduled_scans() -> int:
         schema = schema_for_workspace(workspace_id)
         with tenant_session(schema) as session:
             settings = svc.get_or_create_settings(session)
+            # Billing gate: suspended workspaces run NO new scans; otherwise the configured
+            # frequency is clamped to the plan-allowed maximum (Core→weekly, Priority→daily,
+            # admin override wins; manual mode uncapped).
+            allowed, effective = billing_svc.discovery_frequency_gate(
+                workspace_id, str(settings.scan_frequency)
+            )
+            if not allowed:
+                continue
             # "Due" is judged from the last actual SCAN (not intake or blocked runs).
             last_scan = session.scalar(
                 select(DiscoveryRun.started_at)
@@ -224,7 +233,7 @@ def dispatch_scheduled_scans() -> int:
                 .order_by(DiscoveryRun.started_at.desc())
                 .limit(1)
             )
-            if not _due(settings.scan_frequency, last_scan):
+            if not _due(ScanFrequency(effective), last_scan):
                 continue
             subjects = list(
                 session.scalars(

@@ -2,6 +2,14 @@
 
 from api.app.models.assets import Asset, AssetStatus, SubjectKeyword
 from api.app.models.audit import AuditLog
+from api.app.models.billing import (
+    BillingCadence,
+    BillingEvent,
+    BillingMode,
+    BillingStatus,
+    PlanTier,
+    WorkspaceBilling,
+)
 from api.app.models.cases import (
     Case,
     CaseEvent,
@@ -88,6 +96,10 @@ __all__ = [
     "Asset",
     "AssetStatus",
     "AuditLog",
+    "BillingCadence",
+    "BillingEvent",
+    "BillingMode",
+    "BillingStatus",
     "CandidateKind",
     "Case",
     "CaseEvent",
@@ -118,6 +130,7 @@ __all__ = [
     "NoticeVersion",
     "OutcomeKind",
     "OutcomeSource",
+    "PlanTier",
     "PortalSubmission",
     "RecheckResult",
     "Report",
@@ -145,4 +158,5 @@ __all__ = [
     "Subject",
     "SubjectStatus",
     "Workspace",
+    "WorkspaceBilling",
 ]
