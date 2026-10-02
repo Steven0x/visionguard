@@ -28,6 +28,7 @@ from api.app.models.discovery import (
 from api.app.models.subjects import Subject
 from api.app.net.fetcher import Fetcher, get_fetcher
 from api.app.net.ssrf import SsrfError
+from api.app.services import billing as billing_svc
 from api.app.services.claim_support import subject_enforcement
 from api.app.services.csam_incidents import record_incident
 from api.app.services.scoring import apply_scoring
@@ -197,6 +198,13 @@ def intake_urls(
     subject: Subject,
     urls: list[str],
 ) -> DiscoveryRun:
+    # Billing gate: a suspended workspace may not start NEW discovery jobs (manual intake + portal
+    # tips). Re-checks on already-filed cases run on a different path and are never gated.
+    if not billing_svc.discovery_allowed(workspace_id):
+        raise billing_svc.BillingSuspended(
+            "This workspace's billing is suspended — new discovery is paused until billing is "
+            "brought current. Work on existing filed cases is unaffected."
+        )
     assert_enforceable(session, subject)
     if len(urls) > get_settings().discovery_intake_max_urls:
         raise ValueError(

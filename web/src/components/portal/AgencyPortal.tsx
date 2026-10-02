@@ -2,13 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 import {
   answerPortalNeed,
   fetchPortalReportPdf,
+  getPortalBilling,
   getPortalCase,
   getPortalContext,
   listPortalCases,
   listPortalNeeds,
   listPortalReports,
   listPortalSubjects,
+  portalCreateCheckout,
+  portalOpenCustomerPortal,
   submitPortalTip,
+  type BillingCadence,
+  type BillingPlanTier,
+  type PortalBillingStatus,
   type PortalCase,
   type PortalCaseDetail,
   type PortalContext,
@@ -18,7 +24,7 @@ import {
 } from "../../api";
 import { useToken } from "../../useToken";
 
-type Tab = "cases" | "subjects" | "needs" | "reports";
+type Tab = "cases" | "subjects" | "needs" | "reports" | "billing";
 
 /** The agency customer portal: a read-mostly view of their own enforcement, plus two limited
  * writes (submit a URL tip, answer a "Needs from you" item). Staff components are never rendered
@@ -52,12 +58,14 @@ export function AgencyPortal() {
     ["subjects", "Subjects"],
     ["needs", "Needs from you"],
     ["reports", "Reports"],
+    ["billing", "Billing"],
   ];
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
         {ctx.workspace_name} — signed in as {ctx.email}
       </p>
+      <BillingBanner />
       <nav className="flex gap-2 border-b border-gray-200">
         {tabs.map(([key, label]) => (
           <button
@@ -75,6 +83,123 @@ export function AgencyPortal() {
       {tab === "subjects" && <SubjectsTab />}
       {tab === "needs" && <NeedsTab />}
       {tab === "reports" && <ReportsTab />}
+      {tab === "billing" && <BillingTab />}
+    </div>
+  );
+}
+
+/** A red/amber banner shown on every tab when billing needs attention (grace or suspended). */
+function BillingBanner() {
+  const { data } = useAsync(getPortalBilling);
+  if (!data) return null;
+  if (data.suspended)
+    return (
+      <div className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
+        Billing is suspended. New monitoring and new subjects are paused — work on existing cases
+        continues. {data.billing_contact_email ?? "Your billing contact"} can bring billing current
+        under the Billing tab.
+      </div>
+    );
+  if (data.in_grace)
+    return (
+      <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-800">
+        A payment is overdue. Please update billing before the grace period ends
+        {data.grace_until ? ` (${data.grace_until.slice(0, 10)})` : ""}.
+      </div>
+    );
+  return null;
+}
+
+function BillingTab() {
+  const getToken = useToken();
+  const { data, error } = useAsync<PortalBillingStatus>(getPortalBilling);
+  const [plan, setPlan] = useState<BillingPlanTier>("core");
+  const [cadence, setCadence] = useState<BillingCadence>("monthly");
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const go = async (url: string) => {
+    window.location.href = url;
+  };
+  const subscribe = async () => {
+    setMsg(null);
+    try {
+      const { url } = await portalCreateCheckout(await getToken(), plan, cadence);
+      await go(url);
+    } catch (e) {
+      setMsg(String(e));
+    }
+  };
+  const manage = async () => {
+    setMsg(null);
+    try {
+      const { url } = await portalOpenCustomerPortal(await getToken());
+      await go(url);
+    } catch (e) {
+      setMsg(String(e));
+    }
+  };
+
+  if (error) return <p className="text-red-600">{error}</p>;
+  if (!data) return <p className="text-gray-500">Loading…</p>;
+
+  return (
+    <div className="space-y-3">
+      <dl className="text-sm">
+        <div className="flex gap-2">
+          <dt className="text-gray-500">Plan</dt>
+          <dd>
+            {data.plan_tier} ({data.cadence}) — {data.status}
+          </dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="text-gray-500">Talents billed</dt>
+          <dd>{data.quantity}</dd>
+        </div>
+      </dl>
+
+      {!data.is_billing_contact ? (
+        <p className="text-sm text-gray-500">
+          {data.billing_contact_email
+            ? `${data.billing_contact_email} manages billing for this workspace.`
+            : "A billing contact has not been designated yet. Ask VisionGuard to set one."}
+        </p>
+      ) : (
+        <div className="space-y-2 rounded border border-gray-200 p-3">
+          {!data.has_subscription && (
+            <div className="flex items-center gap-2">
+              <select
+                className="border p-1 text-sm"
+                value={plan}
+                onChange={(e) => setPlan(e.target.value as BillingPlanTier)}
+              >
+                <option value="core">Core</option>
+                <option value="priority">Priority</option>
+              </select>
+              <select
+                className="border p-1 text-sm"
+                value={cadence}
+                onChange={(e) => setCadence(e.target.value as BillingCadence)}
+              >
+                <option value="monthly">Monthly</option>
+                <option value="annual">Annual (2 months free)</option>
+              </select>
+              <button
+                className="rounded bg-blue-700 px-2 py-1 text-sm text-white"
+                onClick={() => void subscribe()}
+              >
+                Subscribe
+              </button>
+            </div>
+          )}
+          <button
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+            onClick={() => void manage()}
+          >
+            Manage billing (card, ACH, invoices)
+          </button>
+        </div>
+      )}
+      {msg && <p className="text-xs text-red-600">{msg}</p>}
     </div>
   );
 }

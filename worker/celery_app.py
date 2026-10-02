@@ -28,7 +28,13 @@ celery = Celery(
     "visionguard",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["worker.tasks", "worker.discovery", "worker.evidence", "worker.rechecks"],
+    include=[
+        "worker.tasks",
+        "worker.discovery",
+        "worker.evidence",
+        "worker.rechecks",
+        "worker.billing",
+    ],
 )
 
 # In tests we run tasks inline (no broker needed).
@@ -56,6 +62,12 @@ celery.conf.beat_schedule = {
     },
     "monitoring-lifecycle": {
         "task": "worker.run_monitoring_lifecycle",
+        "schedule": 86400.0,
+    },
+    # Slice 13: reconcile every stripe-mode workspace to Stripe daily (missed/out-of-order webhook
+    # safety net) — re-fetch subscription, re-sync quantity + status, log drift.
+    "reconcile-billing": {
+        "task": "worker.reconcile_billing",
         "schedule": 86400.0,
     },
 }

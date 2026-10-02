@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../../App";
@@ -46,6 +46,28 @@ vi.mock("../../api", () => ({
       },
     ]),
   ),
+  listPortalSubjects: vi.fn(() => Promise.resolve([])),
+  listPortalNeeds: vi.fn(() => Promise.resolve([])),
+  listPortalReports: vi.fn(() => Promise.resolve([])),
+  getPortalBilling: vi.fn(() =>
+    Promise.resolve({
+      billing_mode: "stripe",
+      status: "active",
+      plan_tier: "core",
+      cadence: "monthly",
+      quantity: 5,
+      current_period_end: null,
+      grace_until: null,
+      in_grace: false,
+      suspended: false,
+      priority: false,
+      has_subscription: true,
+      is_billing_contact: false,
+      billing_contact_email: "contact@client.test",
+    }),
+  ),
+  portalCreateCheckout: vi.fn(() => Promise.resolve({ url: "https://checkout.test" })),
+  portalOpenCustomerPortal: vi.fn(() => Promise.resolve({ url: "https://portal.test" })),
   // Staff-console functions must NOT be called for an agency user.
   listWorkspaces: vi.fn(() => Promise.resolve([])),
 }));
@@ -68,5 +90,41 @@ describe("AgencyPortal routing", () => {
     render(<App />);
     expect(await screen.findByText("Case #1")).toBeInTheDocument();
     expect(screen.getByText("https://site.example")).toBeInTheDocument();
+  });
+
+  it("hides billing actions from a non-contact agency user", async () => {
+    render(<App />);
+    await screen.findByText("Acme Talent — signed in as agency@client.test");
+    fireEvent.click(screen.getByRole("button", { name: "Billing" }));
+    expect(
+      await screen.findByText("contact@client.test manages billing for this workspace."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Manage billing (card, ACH, invoices)" })).not
+      .toBeInTheDocument();
+  });
+
+  it("shows billing actions to the designated billing contact", async () => {
+    const api = await import("../../api");
+    vi.mocked(api.getPortalBilling).mockResolvedValue({
+      billing_mode: "stripe",
+      status: "active",
+      plan_tier: "core",
+      cadence: "monthly",
+      quantity: 5,
+      current_period_end: null,
+      grace_until: null,
+      in_grace: false,
+      suspended: false,
+      priority: false,
+      has_subscription: true,
+      is_billing_contact: true,
+      billing_contact_email: "agency@client.test",
+    });
+    render(<App />);
+    await screen.findByText("Acme Talent — signed in as agency@client.test");
+    fireEvent.click(screen.getByRole("button", { name: "Billing" }));
+    expect(
+      await screen.findByRole("button", { name: "Manage billing (card, ACH, invoices)" }),
+    ).toBeInTheDocument();
   });
 });
