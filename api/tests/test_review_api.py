@@ -18,7 +18,9 @@ from .reviewhelpers import add_candidate, make_subject
 Auth = Callable[..., dict[str, str]]
 
 
-def _inbox(client: TestClient, ws: int, hdr: dict[str, str], **params: object) -> list[dict]:
+def _inbox(
+    client: TestClient, ws: int, hdr: dict[str, str], **params: str | int | float | bool | None
+) -> list[dict]:
     r = client.get(f"/workspaces/{ws}/review/inbox", headers=hdr, params=params)
     assert r.status_code == 200, r.text
     return r.json()

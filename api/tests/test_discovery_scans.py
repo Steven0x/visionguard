@@ -63,7 +63,8 @@ def test_reverse_scan_dedupes_on_rerun(db, new_workspace):
 
 
 def test_keyword_scan_creates_link_candidates(db, new_workspace):
-    sid, _ = authorized_subject(new_workspace.schema_name, keywords=("leaked",))
+    # A non-risky keyword: risky terms are suppressed in safe mode (no real CSAM scanner).
+    sid, _ = authorized_subject(new_workspace.schema_name, keywords=("starlet",))
     assert keyword_scan.run(new_workspace.id, sid) == "completed"
     with tenant_session(new_workspace.schema_name) as s:
         links = list(
@@ -73,4 +74,5 @@ def test_keyword_scan_creates_link_candidates(db, new_workspace):
                 )
             ).all()
         )
-    assert links and all(c.query == "leaked" for c in links)
+    assert links and all(c.kind == CandidateKind.link for c in links)
+    assert any(c.query == "starlet" and c.source == "keyword" for c in links)

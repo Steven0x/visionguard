@@ -3,6 +3,7 @@ import {
   type DiscoveryCandidate,
   type DiscoveryRun,
   candidateThumbnailUrl,
+  getDiscoverySettings,
   intakeUrls,
   listDiscoveryCandidates,
   listDiscoveryRuns,
@@ -60,6 +61,7 @@ export function DiscoverySection({
   const getToken = useToken();
   const [candidates, setCandidates] = useState<DiscoveryCandidate[]>([]);
   const [runs, setRuns] = useState<DiscoveryRun[]>([]);
+  const [safeMode, setSafeMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [urls, setUrls] = useState("");
 
@@ -68,6 +70,7 @@ export function DiscoverySection({
       const t = await getToken();
       setCandidates(await listDiscoveryCandidates(t, workspaceId, subjectId));
       setRuns(await listDiscoveryRuns(t, workspaceId, subjectId));
+      setSafeMode((await getDiscoverySettings(t, workspaceId)).safe_mode);
     } catch (e) {
       setError(errorText(e));
     }
@@ -96,7 +99,15 @@ export function DiscoverySection({
   return (
     <section className="space-y-3">
       <h3 className="font-medium">Discovery</h3>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {safeMode && (
+        <div
+          data-testid="csam-safe-banner"
+          className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-sm text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+        >
+          CSAM scanner not connected — test with your own photos only.
+        </div>
+      )}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <button
         className="rounded bg-primary px-2 py-1 text-sm text-white"

@@ -20,18 +20,27 @@ __all__ = [
 ]
 
 
-def get_reverse_image_providers(*, tineye_enabled: bool) -> list[ReverseImageProvider]:
+def get_reverse_image_providers(
+    *, tineye_enabled: bool, second_engine: str = "off"
+) -> list[ReverseImageProvider]:
     settings = get_settings()
     if settings.provider_backend == "fake":
         from api.app.providers.fakes import FakeReverseImageProvider
 
         return [FakeReverseImageProvider()]
 
-    from api.app.providers.serpapi import SerpApiLensProvider
+    from api.app.providers.serpapi import SerpApiLensProvider, SerpApiReverseProvider
 
     providers: list[ReverseImageProvider] = [
         SerpApiLensProvider(settings.serpapi_key, settings.serpapi_cost_cents_per_call)
     ]
+    # A second SerpApi reverse engine (yandex_images default; bing selectable), per-workspace.
+    if second_engine and second_engine != "off":
+        providers.append(
+            SerpApiReverseProvider(
+                second_engine, settings.serpapi_key, settings.serpapi_cost_cents_per_call
+            )
+        )
     if tineye_enabled:
         from api.app.providers.tineye import TinEyeProvider
 

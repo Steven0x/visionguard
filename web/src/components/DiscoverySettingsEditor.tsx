@@ -29,6 +29,9 @@ export function DiscoverySettingsEditor({ workspaceId }: { workspaceId: number }
           monthly_call_budget: Number(form.get("budget")),
           scan_frequency: String(form.get("frequency")) as DiscoverySettings["scan_frequency"],
           tineye_enabled: form.get("tineye") === "on",
+          second_reverse_engine: String(
+            form.get("second_reverse_engine"),
+          ) as DiscoverySettings["second_reverse_engine"],
         });
         setSettings(updated);
       }}
@@ -53,6 +56,18 @@ export function DiscoverySettingsEditor({ workspaceId }: { workspaceId: number }
       </label>
       <label className="text-sm">
         <input name="tineye" type="checkbox" defaultChecked={settings.tineye_enabled} /> TinEye
+      </label>
+      <label className="text-sm">
+        2nd reverse engine{" "}
+        <select
+          name="second_reverse_engine"
+          defaultValue={settings.second_reverse_engine}
+          className="border p-1"
+        >
+          <option value="off">off</option>
+          <option value="yandex_images">Yandex Images</option>
+          <option value="bing">Bing (unreliable)</option>
+        </select>
       </label>
       <button className="rounded bg-gray-800 px-2 py-1 text-white">Save</button>
     </form>

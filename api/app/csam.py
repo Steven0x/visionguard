@@ -70,6 +70,12 @@ def csam_scanner_configured() -> bool:
     return get_settings().csam_scanner_backend != "none"
 
 
+def safe_discovery_mode() -> bool:
+    """True while no REAL CSAM scanner is connected (backend is none/fake). Discovery then
+    suppresses risky-term queries and staff see a banner (CLAUDE.md #7)."""
+    return not get_settings().csam_scanner_is_real
+
+
 def scan_image(image_bytes: bytes) -> ScanOutcome:
     """Scan one image, never raising: any scanner error becomes ``error`` (fail closed).
     Callers store/seal ONLY on ``ScanOutcome.clean``."""

@@ -66,6 +66,10 @@ class DiscoverySettings(TenantBase):
         String(20), nullable=False, default=ScanFrequency.off
     )
     tineye_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Optional second reverse-image engine via SerpApi: "off" | "yandex_images" | "bing".
+    second_reverse_engine: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="off", server_default="off"
+    )
     thumbnail_retention_days: Mapped[int] = mapped_column(
         Integer, nullable=False, default=90
     )
@@ -123,6 +127,12 @@ class DiscoveryCandidate(TenantBase):
     )
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # How this candidate was found: "reverse" | "keyword" | "name_sweep". A name sweep also sets
+    # suggested_claim="impersonation".
+    source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="reverse", server_default="reverse"
+    )
+    suggested_claim: Mapped[str | None] = mapped_column(String(20), nullable=True)
     kind: Mapped[CandidateKind] = mapped_column(String(20), nullable=False)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     # sha256 of the canonical source_url — the dedupe key (avoids indexing huge URLs).

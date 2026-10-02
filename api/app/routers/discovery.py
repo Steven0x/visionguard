@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from api.app.auth.deps import get_tenant_session, require_role, require_workspace_access
 from api.app.config import get_settings
+from api.app.csam import safe_discovery_mode
 from api.app.models.assets import Asset, AssetStatus
 from api.app.models.discovery import (
     CandidateKind,
@@ -103,13 +105,17 @@ class SettingsOut(BaseModel):
     monthly_call_budget: int
     scan_frequency: ScanFrequency
     tineye_enabled: bool
+    second_reverse_engine: str
     thumbnail_retention_days: int
+    # Read-only: true while no REAL CSAM scanner is connected (discovery runs in safe mode).
+    safe_mode: bool = False
 
 
 class SettingsIn(BaseModel):
     monthly_call_budget: int | None = Field(default=None, ge=0, le=100_000)
     scan_frequency: ScanFrequency | None = None
     tineye_enabled: bool | None = None
+    second_reverse_engine: Literal["off", "yandex_images", "bing"] | None = None
     thumbnail_retention_days: int | None = Field(default=None, ge=1, le=365)
 
 
@@ -222,13 +228,19 @@ def list_runs(
 # ── Workspace-scoped settings ─────────────────────────────────────────────────
 
 
+def _settings_out(settings: DiscoverySettings) -> SettingsOut:
+    out = SettingsOut.model_validate(settings)
+    out.safe_mode = safe_discovery_mode()
+    return out
+
+
 @router.get("/discovery/settings", response_model=SettingsOut)
 def get_discovery_settings(
     workspace: Workspace = Depends(require_workspace_access),
     staff: Staff = Depends(_STAFF),
     session: Session = Depends(get_tenant_session),
-) -> DiscoverySettings:
-    return svc.get_or_create_settings(session)
+) -> SettingsOut:
+    return _settings_out(svc.get_or_create_settings(session))
 
 
 @router.put("/discovery/settings", response_model=SettingsOut)
@@ -237,9 +249,9 @@ def update_discovery_settings(
     workspace: Workspace = Depends(require_workspace_access),
     staff: Staff = Depends(_ADMIN),
     session: Session = Depends(get_tenant_session),
-) -> DiscoverySettings:
+) -> SettingsOut:
     settings = svc.get_or_create_settings(session)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(settings, field, value)
     session.flush()
-    return settings
+    return _settings_out(settings)

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -34,6 +36,7 @@ from api.app.services.claim_support import (
     subject_enforcement,
 )
 from api.app.services.csam_incidents import record_incident
+from api.app.services.keywords import identifiers as get_identifiers
 from api.app.services.scoring import apply_scoring
 from api.app.storage import get_storage
 from api.app.storage.keys import object_key
@@ -164,6 +167,7 @@ def finish_run(
     cost_cents: int = 0,
     candidates_found: int = 0,
     error: str | None = None,
+    cost_by_provider: dict[str, int] | None = None,
 ) -> None:
     run.status = status
     run.calls_made = calls_made
@@ -172,6 +176,16 @@ def finish_run(
     run.error = error
     run.finished_at = datetime.now(UTC)
     session.flush()
+    meta: dict[str, object] = {
+        "kind": str(run.kind),
+        "provider": run.provider,
+        "status": str(status),
+        "calls_made": calls_made,
+        "cost_cents": cost_cents,
+        "candidates_found": candidates_found,
+    }
+    if cost_by_provider:
+        meta["cost_by_provider"] = cost_by_provider  # per-provider cost breakdown
     record_audit(
         session,
         workspace_id=workspace_id,
@@ -179,14 +193,7 @@ def finish_run(
         action="discovery.scan_run" if run.kind != RunKind.manual_intake else "discovery.intake",
         entity_type="discovery_run",
         entity_id=str(run.id),
-        meta={
-            "kind": str(run.kind),
-            "provider": run.provider,
-            "status": str(status),
-            "calls_made": calls_made,
-            "cost_cents": cost_cents,
-            "candidates_found": candidates_found,
-        },
+        meta=meta,
     )
 
 
@@ -340,6 +347,7 @@ def add_image_candidate(
         embedding=get_embedder().embed(result.content) if wants_embedding else None,
         thumbnail_key=thumbnail_key,
         content_type=result.content_type,
+        source="reverse",
     )
     session.add(candidate)
     session.flush()
@@ -357,6 +365,8 @@ def add_link_candidate(
     source_url: str,
     page_url: str | None,
     title: str | None = None,
+    source: str = "keyword",
+    suggested_claim: str | None = None,
 ) -> DiscoveryCandidate | None:
     canonical = canonicalize_url(source_url)
     if canonical is None:
@@ -374,11 +384,53 @@ def add_link_candidate(
         source_key=key,
         page_url=_safe_page_url(page_url),
         title=title,
+        source=source,
+        suggested_claim=suggested_claim,
     )
     session.add(candidate)
     session.flush()
     apply_scoring(session, candidate)  # score + allowlist routing before the inbox
     return candidate
+
+
+# Platforms swept for impersonation (site: searches for the subject's handles/stage names).
+NAME_SWEEP_SITES = ("instagram.com", "tiktok.com", "x.com", "facebook.com", "t.me")
+
+
+@dataclass(frozen=True)
+class KeywordQuery:
+    text: str
+    source: str  # "keyword" | "name_sweep"
+    suggested_claim: str | None
+
+
+def _is_risky(text: str) -> bool:
+    # Word-boundary match so a risky term only suppresses a query when it appears as a whole word
+    # (or host label) — e.g. "leaked"/"onlyfans.com" are risky, but a name like "Freeman" (which
+    # merely contains "free") is not over-suppressed.
+    low = text.lower()
+    return any(
+        re.search(rf"\b{re.escape(term)}\b", low)
+        for term in get_settings().discovery_risky_term_list
+    )
+
+
+def build_keyword_queries(
+    session: Session, subject: Subject, *, safe_mode: bool
+) -> list[KeywordQuery]:
+    """Keyword queries for a subject: the plain identifiers PLUS per-platform impersonation name
+    sweeps (`site:<platform> "<identifier>"`, suggested claim = impersonation). In safe mode (no
+    real CSAM scanner) any query containing a risky term is dropped (CLAUDE.md #7)."""
+    identifiers = get_identifiers(session, subject)
+    queries: list[KeywordQuery] = [KeywordQuery(i, "keyword", None) for i in identifiers]
+    for identifier in identifiers:
+        for site in NAME_SWEEP_SITES:
+            queries.append(
+                KeywordQuery(f'site:{site} "{identifier}"', "name_sweep", "impersonation")
+            )
+    if safe_mode:
+        queries = [q for q in queries if not _is_risky(q.text)]
+    return queries
 
 
 def list_candidates(session: Session, subject_id: int) -> list[DiscoveryCandidate]:
