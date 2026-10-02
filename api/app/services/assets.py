@@ -159,3 +159,36 @@ def _enqueue_fingerprint(session: Session, workspace_id: int, asset_id: int) -> 
     from worker.tasks import fingerprint_asset
 
     fingerprint_asset.delay(workspace_id, asset_id)
+
+
+def requeue_pending_assets(session: Session, *, workspace_id: int) -> int:
+    """Re-enqueue fingerprinting for every asset stuck in 'pending' (e.g. after a worker that
+    never consumed them). Returns the count. fingerprint_asset atomically claims pending→
+    processing, so re-queuing an already-running one is a harmless no-op ('skipped')."""
+    from worker.tasks import fingerprint_asset
+
+    ids = list(
+        session.scalars(
+            select(Asset.id).where(Asset.status == AssetStatus.pending).order_by(Asset.id)
+        ).all()
+    )
+    for asset_id in ids:
+        fingerprint_asset.delay(workspace_id, asset_id)
+    return len(ids)
+
+
+def reprocess_assets(
+    session: Session, *, workspace_id: int, subject_id: int | None = None
+) -> int:
+    """Re-derive thumbnail/pHash/embedding for already-processed ('ready') assets — optionally a
+    single subject — to backfill a pipeline change such as the EXIF-orientation fix. Returns the
+    count enqueued."""
+    from worker.tasks import reprocess_asset
+
+    stmt = select(Asset.id).where(Asset.status == AssetStatus.ready)
+    if subject_id is not None:
+        stmt = stmt.where(Asset.subject_id == subject_id)
+    ids = list(session.scalars(stmt.order_by(Asset.id)).all())
+    for asset_id in ids:
+        reprocess_asset.delay(workspace_id, asset_id)
+    return len(ids)

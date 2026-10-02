@@ -59,12 +59,14 @@ class ClipEmbedder:
             self._torch = torch
 
     def embed(self, image_bytes: bytes) -> list[float]:
-        from PIL import Image
+        from PIL import Image, ImageOps
 
         self._ensure_loaded()
         if self._model is None or self._preprocess is None:  # pragma: no cover
             raise RuntimeError("embedder failed to load")
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        # Apply EXIF orientation before CLIP sees the pixels, matching images.validate_and_load
+        # (used for the pHash/thumbnail) so all fingerprints describe the same upright image.
+        image = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes))).convert("RGB")
         tensor = self._preprocess(image).unsqueeze(0)
         with self._torch.no_grad():
             features = self._model.encode_image(tensor)

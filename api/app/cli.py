@@ -143,6 +143,49 @@ def sample_report_cmd(
     )
 
 
+def _resolve_schema(workspace_id: int) -> str:
+    """Look up the workspace in public and return its tenant schema, or fail with a clear error."""
+    from api.app.db.session import public_session
+    from api.app.models.public import Workspace
+
+    with public_session() as session:
+        ws = session.get(Workspace, workspace_id)
+        if ws is None:
+            raise typer.BadParameter(f"workspace {workspace_id} not found")
+        return ws.schema_name
+
+
+@app.command("requeue-pending-assets")
+def requeue_pending_assets_cmd(
+    workspace: int = typer.Option(..., "--workspace", help="Workspace id"),
+) -> None:
+    """Re-enqueue fingerprinting for assets stuck in 'pending' (e.g. after a broken worker)."""
+    from api.app.db.session import tenant_session
+    from api.app.services import assets as asset_service
+
+    schema = _resolve_schema(workspace)
+    with tenant_session(schema) as session:
+        count = asset_service.requeue_pending_assets(session, workspace_id=workspace)
+    typer.echo(f"re-queued {count} pending asset(s) in workspace {workspace}")
+
+
+@app.command("reprocess-assets")
+def reprocess_assets_cmd(
+    workspace: int = typer.Option(..., "--workspace", help="Workspace id"),
+    subject: int | None = typer.Option(None, "--subject", help="Limit to one subject id"),
+) -> None:
+    """Re-derive thumbnail/pHash/embedding for 'ready' assets (e.g. to backfill the EXIF fix)."""
+    from api.app.db.session import tenant_session
+    from api.app.services import assets as asset_service
+
+    schema = _resolve_schema(workspace)
+    with tenant_session(schema) as session:
+        count = asset_service.reprocess_assets(
+            session, workspace_id=workspace, subject_id=subject
+        )
+    typer.echo(f"enqueued reprocess for {count} asset(s) in workspace {workspace}")
+
+
 # StaffRole is re-exported for convenience in future subcommands.
 __all__ = ["app", "StaffRole"]
 
