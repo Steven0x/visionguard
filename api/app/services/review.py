@@ -142,6 +142,10 @@ def list_inbox(
                 sup,
             )
         suggested, sup = claim_cache[subject.id]
+        # A name-sweep candidate carries its own suggested claim (impersonation); prefer it when
+        # that claim is actually supported for the subject, else fall back to the per-subject one.
+        if c.suggested_claim and c.suggested_claim in set(sup):
+            suggested = c.suggested_claim
         items.append(
             InboxItem(
                 candidate=c,

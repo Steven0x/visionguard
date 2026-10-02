@@ -155,10 +155,12 @@ def test_reports_omit_internal_fields(
         )
     hdr = _portal(client, new_workspace, auth_header)
     reports = client.get("/portal/reports", headers=hdr).json()
+    # Exact key allowlist already proves no internal field (generated_by_staff_id, keys, hashes)
+    # leaks — stronger and collision-free (a bare "999 not in str" matches incidental digits in
+    # ids/timestamps and is flaky as ids grow).
     assert reports and set(reports[0]) == {
         "id", "subject_id", "period_start", "period_end", "created_at",
     }
-    assert "999" not in str(reports)  # no generated_by_staff_id / keys / hashes
 
 
 def test_subject_omits_notes(

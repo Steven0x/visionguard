@@ -33,9 +33,20 @@ All routes sit behind `require_workspace_access`.
    like `utm_*`, `gclid`, `fbclid`) and deduped (within the batch and against existing
    candidates). Stored as `link` candidates.
 2. **Reverse image** per **ready** asset via **SerpApi Google Lens** (visual + exact matches).
-   **TinEye** is used only when `discovery_settings.tineye_enabled` (off by default).
+   A **second SerpApi reverse engine** is per-workspace configurable via
+   `discovery_settings.second_reverse_engine` (`off` | `yandex_images` | `bing`, default `off`;
+   `SerpApiReverseProvider`). **Yandex Images** is the recommended second engine; **Bing is
+   selectable but unreliable** — SerpApi has no robust Bing reverse-image-by-URL engine and Bing's
+   own search APIs were retired (CLAUDE.md), so it is flagged in the UI. **TinEye** is used only
+   when `discovery_settings.tineye_enabled` (off by default). All providers run under the one
+   per-workspace budget; results are **deduped by canonical URL** across providers (the
+   `unique(subject_id, source_key)` constraint + `_candidate_exists`).
 3. **Keyword** search from the subject's identifiers (Slice 3 `keywords.identifiers`) via
-   **SerpApi Google**. Stored as `link` candidates.
+   **SerpApi Google**, plus per-handle **impersonation name sweeps**: `site:<platform> "<handle
+   or stage name>"` for `instagram.com, tiktok.com, x.com, facebook.com, t.me`
+   (`services/discovery.build_keyword_queries` → `NAME_SWEEP_SITES`). Sweep candidates are tagged
+   `source="name_sweep"` with `suggested_claim="impersonation"` (the review inbox prefers that
+   claim when it is supported for the subject). Stored as `link` candidates.
 
 ## SSRF-safe fetcher
 
@@ -77,6 +88,18 @@ fetcher is used and `CSAM_SCANNER_ENABLED` is false — so a reverse-image scan 
 records a `blocked` run and stores nothing until the scanner is wired. The fake fetcher
 (tests/CI) is exempt. Nothing beyond a thumbnail is ever retained.
 
+### Safe mode (no real scanner) — risky-term suppression + staff banner
+When **no real CSAM scanner is connected** (`csam_scanner_backend` is `none`/`fake` — i.e.
+`csam.safe_discovery_mode()` is true), discovery still runs locally, so two guards apply
+(CLAUDE.md #7): (a) **risky-term queries are suppressed** — any keyword/name-sweep query whose
+words include a term in `discovery_risky_terms` (`leaked, onlyfans, nude, mega, telegram, …`;
+matched on **word boundaries** so a name like "Freeman" isn't dropped for containing "free") is
+dropped in `build_keyword_queries`, so staff don't pull the riskiest imagery through a fake
+scanner; and (b) the discovery UI shows a **banner**: *"CSAM scanner not connected — test with
+your own photos only."* (`GET /discovery/settings` exposes a read-only `safe_mode`). Reverse
+image scans are unaffected by (a) — they still run through the `add_image_candidate` CSAM choke
+point, which fails closed until a scanner is wired.
+
 ## Jobs, budget, cost
 
 - Celery **beat**: `dispatch_scheduled_scans` (hourly) enqueues per-workspace scans whose
@@ -88,6 +111,30 @@ records a `blocked` run and stores nothing until the scanner is wired. The fake 
 - Each run records `provider`, `calls_made`, `estimated_cost_cents`, `candidates_found`, and
   `status`. Providers back off on 429/5xx. Provider + fetcher are behind interfaces; tests use
   fakes (no network).
+- **Cost per provider** is logged per call (`discovery.provider_cost provider=… calls=…
+  cost_cents=…`, no secrets) and a `cost_by_provider` breakdown is folded into the
+  `discovery.scan_run` audit meta when more than one provider runs.
+
+## Local real-discovery profile (dev)
+
+To exercise the real pipeline locally, set these in the gitignored `.env` (the SerpApi key stays
+there — **never committed**) and install the ML + browser extras:
+
+```
+PROVIDER_BACKEND=serpapi     # SerpApi Google Lens + optional 2nd engine
+FETCHER_BACKEND=safe         # SSRF-safe fetcher
+CAPTURE_BACKEND=playwright   # evidence screenshots/HTML
+TSA_BACKEND=rfc3161          # RFC 3161 timestamps
+EMBEDDER_BACKEND=clip        # OpenCLIP ViT-B-32 (first use downloads the model)
+EMAIL_BACKEND=outbox         # never send real mail locally
+CSAM_SCANNER_BACKEND=fake    # no real scanner → safe mode (banner + risky-term suppression)
+SERPAPI_KEY=…                # your key, in .env only
+```
+```
+pip install -e ".[ml]" && python -m playwright install chromium
+```
+Safe mode stays on (CSAM fake), so risky-term queries are suppressed and the banner shows —
+**test with your own photos only**.
 
 ## Audit
 

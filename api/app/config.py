@@ -138,6 +138,9 @@ class Settings(BaseSettings):
     review_leak_domains: str = "leak-tube.example,leaks.example"
     review_risky_keywords: str = "leaked,leak,free,onlyfans,nude,nudes,stolen,xxx"
     review_bulk_dismiss_max: int = 500
+    # Discovery queries containing any of these are suppressed while no REAL CSAM scanner is
+    # connected (safe mode) — they tend to surface the riskiest imagery. See services/discovery.
+    discovery_risky_terms: str = "leaked,leak,onlyfans,nude,nudes,mega,telegram,stolen,xxx,free"
 
     # Cases (Slice 6). Follow-up timer per state: "state:days,..." (config, not hard-coded).
     # A transition sets due_at = now + days[new_state]; terminal states clear it.
@@ -223,6 +226,16 @@ class Settings(BaseSettings):
     @property
     def review_risky_keyword_list(self) -> list[str]:
         return [k.strip().lower() for k in self.review_risky_keywords.split(",") if k.strip()]
+
+    @property
+    def discovery_risky_term_list(self) -> list[str]:
+        return [t.strip().lower() for t in self.discovery_risky_terms.split(",") if t.strip()]
+
+    @property
+    def csam_scanner_is_real(self) -> bool:
+        """A real CSAM scanner is connected (not `none`/`fake`). While false, discovery runs in
+        'safe mode': risky-term queries are suppressed and staff see a banner (CLAUDE.md #7)."""
+        return self.csam_scanner_backend in _REAL_CSAM_BACKENDS
 
     @property
     def is_production(self) -> bool:

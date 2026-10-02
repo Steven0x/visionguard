@@ -6,9 +6,10 @@ under a row lock BEFORE any provider call, so concurrent scans can't exceed the 
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
-from api.app.csam import csam_scanner_configured
+from api.app.csam import csam_scanner_configured, safe_discovery_mode
 from api.app.db.base import schema_for_workspace
 from api.app.db.session import public_session, tenant_session
 from api.app.models.assets import Asset, AssetStatus
@@ -27,7 +28,6 @@ from api.app.providers.base import ProviderResult
 from api.app.services import billing as billing_svc
 from api.app.services import discovery as svc
 from api.app.services.claim_support import subject_enforcement
-from api.app.services.keywords import identifiers as get_identifiers
 from api.app.services.review import candidate_referenced_by_open_case
 from api.app.storage import get_storage
 from sqlalchemy import select
@@ -35,6 +35,7 @@ from sqlalchemy import select
 from worker.celery_app import celery
 from worker.locks import single_run
 
+logger = logging.getLogger("visionguard")
 _SIGNED_TTL = 300
 
 
@@ -73,6 +74,7 @@ def reverse_image_scan(workspace_id: int, subject_id: int, asset_id: int) -> str
         assert settings is not None  # noqa: S101 - just created above
         budget = settings.monthly_call_budget
         tineye_enabled = settings.tineye_enabled
+        second_engine = settings.second_reverse_engine
         run = svc.start_run(
             session, kind=RunKind.reverse_image, subject_id=subject_id, asset_id=asset_id
         )
@@ -91,7 +93,9 @@ def reverse_image_scan(workspace_id: int, subject_id: int, asset_id: int) -> str
             svc.finish_run(session, workspace_id=workspace_id, actor_staff_id=None, run=run,
                            status=RunStatus.blocked)
             return "blocked"
-        providers = get_reverse_image_providers(tineye_enabled=tineye_enabled)
+        providers = get_reverse_image_providers(
+            tineye_enabled=tineye_enabled, second_engine=second_engine
+        )
         reserve = min(len(providers), budget - mtd)
         capped = reserve < len(providers)
         run.calls_made = reserve  # reserve budget before releasing the lock
@@ -103,9 +107,16 @@ def reverse_image_scan(workspace_id: int, subject_id: int, asset_id: int) -> str
     cost = candidates = 0
     try:
         collected: list[tuple[str, ProviderResult]] = []
+        per_provider: dict[str, int] = {}
         for provider in providers[:reserve]:
             response = provider.search(image_url)
             cost += response.cost_cents
+            per_provider[provider.name] = per_provider.get(provider.name, 0) + response.cost_cents
+            # Cost per provider (no secrets — just name/calls/cost).
+            logger.info(
+                "discovery.provider_cost provider=%s calls=%d cost_cents=%d",
+                provider.name, response.calls_made, response.cost_cents,
+            )
             for result in response.results:
                 collected.append((provider.name, result))
         with tenant_session(schema) as session:
@@ -123,6 +134,7 @@ def reverse_image_scan(workspace_id: int, subject_id: int, asset_id: int) -> str
                     session, workspace_id=workspace_id, actor_staff_id=None, run=final_run,
                     status=RunStatus.partial if capped else RunStatus.completed,
                     calls_made=reserve, cost_cents=cost, candidates_found=candidates,
+                    cost_by_provider=per_provider,
                 )
         return "completed"
     except Exception as exc:  # never raises — eager-safe
@@ -156,7 +168,9 @@ def keyword_scan(workspace_id: int, subject_id: int) -> str:
             svc.finish_run(session, workspace_id=workspace_id, actor_staff_id=None, run=run,
                            status=RunStatus.blocked)
             return "blocked"
-        queries = get_identifiers(session, subject)
+        # Identifiers + per-platform impersonation name sweeps; risky-term queries dropped while
+        # no real CSAM scanner is connected (safe mode).
+        queries = svc.build_keyword_queries(session, subject, safe_mode=safe_discovery_mode())
         reserve = min(len(queries), budget - mtd)
         capped = reserve < len(queries)
         run.calls_made = reserve
@@ -165,18 +179,23 @@ def keyword_scan(workspace_id: int, subject_id: int) -> str:
     cost = candidates = 0
     try:
         provider = get_keyword_provider()
-        collected: list[tuple[str, ProviderResult]] = []
+        collected: list[tuple[svc.KeywordQuery, ProviderResult]] = []
         for query in queries[:reserve]:
-            response = provider.search(query)
+            response = provider.search(query.text)
             cost += response.cost_cents
+            logger.info(
+                "discovery.provider_cost provider=%s calls=%d cost_cents=%d",
+                provider.name, response.calls_made, response.cost_cents,
+            )
             for result in response.results:
                 collected.append((query, result))
         with tenant_session(schema) as session:
             for query, result in collected:
                 if svc.add_link_candidate(
                     session, subject_id=subject_id, run_id=run_id, provider=provider.name,
-                    query=query, source_url=result.source_url, page_url=result.page_url,
-                    title=result.title,
+                    query=query.text, source_url=result.source_url, page_url=result.page_url,
+                    title=result.title, source=query.source,
+                    suggested_claim=query.suggested_claim,
                 ) is not None:
                     candidates += 1
             final_run = session.get(DiscoveryRun, run_id)
@@ -185,6 +204,7 @@ def keyword_scan(workspace_id: int, subject_id: int) -> str:
                     session, workspace_id=workspace_id, actor_staff_id=None, run=final_run,
                     status=RunStatus.partial if capped else RunStatus.completed,
                     calls_made=reserve, cost_cents=cost, candidates_found=candidates,
+                    cost_by_provider={provider.name: cost},
                 )
         return "completed"
     except Exception as exc:

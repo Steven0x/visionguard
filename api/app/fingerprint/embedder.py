@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import io
 from functools import lru_cache
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -41,9 +41,11 @@ class ClipEmbedder:
     def __init__(self, model_name: str, pretrained: str) -> None:
         self._model_name = model_name
         self._pretrained = pretrained
-        self._model = None
-        self._preprocess = None
-        self._torch = None
+        # Typed Any: the concrete torch/open_clip objects are only imported when the [ml] extra is
+        # installed (lazily in _ensure_loaded), so we don't bind to their types at module load.
+        self._model: Any = None
+        self._preprocess: Any = None
+        self._torch: Any = None
 
     def _ensure_loaded(self) -> None:
         if self._model is None:

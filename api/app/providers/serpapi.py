@@ -28,7 +28,13 @@ def _get_json(params: dict[str, str], *, retries: int = 3, timeout: float = 20.0
             continue
         if response.status_code >= 400:
             raise ProviderError(f"serpapi returned HTTP {response.status_code}") from None
-        return response.json()
+        data: dict[str, Any] = response.json()
+        # SerpApi signals invalid/exhausted keys with a 200 + top-level "error". Treat that as a
+        # failed call, not an empty result set — otherwise a dead key looks like "no matches" and
+        # staff wrongly conclude a subject is clean. Don't echo the message (may carry params).
+        if "error" in data:
+            raise ProviderError("serpapi returned an error response") from None
+        return data
     raise ProviderError("serpapi request failed")  # pragma: no cover
 
 
@@ -46,6 +52,54 @@ class SerpApiLensProvider:
         results: list[ProviderResult] = []
         for match in [*data.get("visual_matches", []), *data.get("exact_matches", [])]:
             source = match.get("image") or match.get("thumbnail")
+            if not source:
+                continue
+            results.append(
+                ProviderResult(
+                    source_url=source,
+                    page_url=match.get("link"),
+                    title=match.get("title"),
+                    thumbnail_url=match.get("thumbnail"),
+                    kind="image",
+                )
+            )
+        return ProviderResponse(results=results, calls_made=1, cost_cents=self._cost_cents)
+
+
+# Result-list keys SerpApi uses across reverse-image engines; parsed defensively (order = priority).
+_REVERSE_MATCH_KEYS = (
+    "image_results",
+    "images_results",
+    "visual_matches",
+    "inline_images",
+    "organic_results",
+)
+
+
+class SerpApiReverseProvider:
+    """A second reverse-image engine via SerpApi. `yandex_images` is well supported; `bing` is
+    selectable but unreliable — SerpApi has no robust Bing reverse-image-by-URL engine, and Bing's
+    own search APIs were retired (see docs/specs/discovery.md). Engine is per-workspace config."""
+
+    def __init__(self, engine: str, api_key: str, cost_cents: int) -> None:
+        self.name = f"serpapi_{engine}"
+        self._engine = engine
+        self._api_key = api_key
+        self._cost_cents = cost_cents
+
+    def search(self, image_url: str) -> ProviderResponse:
+        data = _get_json({"engine": self._engine, "url": image_url, "api_key": self._api_key})
+        matches: list[dict[str, Any]] = []
+        for key in _REVERSE_MATCH_KEYS:
+            matches.extend(data.get(key, []))
+        results: list[ProviderResult] = []
+        for match in matches:
+            source = (
+                match.get("original")
+                or match.get("original_image")
+                or match.get("image")
+                or match.get("thumbnail")
+            )
             if not source:
                 continue
             results.append(
