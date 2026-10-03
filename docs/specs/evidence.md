@@ -56,8 +56,13 @@ uploads**. All evidence is restricted-access: signed-URL only, every access cust
 
 - SHA-256 of every artifact → a **manifest** (sorted, deterministic) → SHA-256 of the manifest
   → an **RFC 3161 token** over the manifest bytes (`TSA_BACKEND` = `rfc3161` | `fake`; the real
-  client tries several TSAs, first answer wins). If every TSA fails → `timestamp_status =
-  untimestamped`, retried by a daily beat task (`retry_untimestamped_captures`).
+  client — sigstore's `rfc3161-client` — tries several TSAs, first answer wins). If every TSA
+  fails → `timestamp_status = untimestamped`, retried by a daily beat task
+  (`retry_untimestamped_captures`). **Verification anchors trust to roots pinned in the repo**
+  (`api/app/evidence_roots/`), not the CA embedded in the token: the signer must carry the
+  `timeStamping` EKU and chain to a pinned root, and the signature must cover exactly the manifest
+  bytes — so a forged self-signed token can't "verify" (CLAUDE.md #6). Configured TSAs are
+  freetsa.org + sigstore; adding one means pinning its root. See ADR 0009.
 - **Write-once evidence bucket** (`STORAGE_EVIDENCE_BUCKET`, separate from assets): `seal_object`
   **refuses to overwrite an existing key** and, on S3/R2/MinIO, writes with **object-lock
   retention** (dev MinIO: bucket created with versioning + object lock, GOVERNANCE mode ~1 day;

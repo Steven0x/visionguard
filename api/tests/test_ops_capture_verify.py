@@ -52,3 +52,13 @@ def test_cmd_verify_passes_on_the_fixture_capture(capsys) -> None:
     assert rc == 0
     assert "VERIFIED" in out
     assert "OK   timestamp" in out
+
+
+def test_verify_token_rejects_forged_self_anchored_token() -> None:
+    """The ops tool anchors to its pinned roots too: a token signed by a self-made CA embedded
+    in the token must FAIL (CLAUDE.md #6). Reuses the shared forged fixture over REAL_MANIFEST."""
+    cap = _load_capture()
+    real_manifest = b"visionguard-evidence-manifest-fixture-v1"
+    forged = (_REPO / "api/tests/fixtures/forged_token.tsr").read_bytes()
+    ok, _ = cap.verify_token(forged, real_manifest)
+    assert ok is False

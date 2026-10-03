@@ -266,7 +266,7 @@ def update_discovery_settings(
             actor_staff_id=staff.id,
             action="discovery.second_engine_changed",
             entity_type="discovery_settings",
-            entity_id="1",
+            entity_id=str(settings.id),
             meta={"from": before_engine, "to": settings.second_reverse_engine},
         )
     return _settings_out(settings)

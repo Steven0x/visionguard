@@ -163,12 +163,13 @@ class Settings(BaseSettings):
     capture_nav_timeout_ms: int = 45_000
     capture_max_page_px: int = 20_000  # cap full-page screenshot height
     capture_tool_version: str = "vg-capture/1.0.0"
-    # TSAs tried in order; first answer wins. Real backend only. freetsa leads because
-    # rfc3161-client's strict DER parser rejects DigiCert/Sectigo's non-sorted certificate SET
-    # (they are kept only as last-resort fallbacks and skipped if they won't parse). See
+    # TSAs tried in order; first answer wins. Real backend only. Both roots are pinned in
+    # evidence_roots/ and both responses parse under rfc3161-client's strict DER parser (DigiCert,
+    # Sectigo and Apple do not — their certificate SET is not DER-sorted — so they are not listed).
+    # Adding a TSA here means pinning its root in evidence_roots/tsa_pinned_roots.pem. See
     # evidence_ts.py.
     tsa_urls: str = (
-        "https://freetsa.org/tsr,http://timestamp.digicert.com,http://timestamp.sectigo.com"
+        "https://freetsa.org/tsr,https://timestamp.sigstore.dev/api/v1/timestamp"
     )
 
     # Email & notices (Slice 8). `outbox` captures messages and never touches the network, so
