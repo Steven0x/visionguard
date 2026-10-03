@@ -32,8 +32,11 @@ services:
     image: quay.io/minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      # Override for a usable Lens tunnel: `make lens-tunnel` refuses default creds (a universally
+      # known signing key makes presigned URLs forgeable). Set MINIO_ROOT_USER/PASSWORD here (via
+      # .env) AND the matching STORAGE_ACCESS_KEY_ID/STORAGE_SECRET_ACCESS_KEY for the app.
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
       - "9000:9000"  # S3 API
       - "9001:9001"  # console
@@ -53,7 +56,7 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin} &&
       mc mb --ignore-existing local/vg-assets &&
       mc mb --ignore-existing --with-lock local/vg-evidence &&
       echo 'buckets vg-assets + vg-evidence (object-locked) ready'
