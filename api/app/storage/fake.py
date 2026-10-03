@@ -23,8 +23,11 @@ class FakeStorage:
     def get_object(self, key: str) -> bytes:
         return self._objects[key]
 
-    def generate_download_url(self, key: str, *, filename: str, expires_in: int) -> str:
-        return f"http://fake-storage.local/{key}?filename={filename}&expires={expires_in}"
+    def generate_download_url(
+        self, key: str, *, filename: str, expires_in: int, public_base_url: str | None = None
+    ) -> str:
+        base = public_base_url.rstrip("/") if public_base_url else "http://fake-storage.local"
+        return f"{base}/{key}?filename={filename}&expires={expires_in}"
 
     def delete_object(self, key: str) -> None:
         self._objects.pop(key, None)

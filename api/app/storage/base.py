@@ -21,9 +21,13 @@ class Storage(Protocol):
         ...
 
     def generate_download_url(
-        self, key: str, *, filename: str, expires_in: int
+        self, key: str, *, filename: str, expires_in: int, public_base_url: str | None = None
     ) -> str:
-        """A short-lived presigned GET URL with an attachment disposition."""
+        """A short-lived presigned GET URL with an attachment disposition.
+
+        `public_base_url` (dev only) signs the URL against a public endpoint (e.g. a tunnel to
+        local MinIO) so an external fetcher like Google Lens can reach it; None uses the normal
+        endpoint (R2 presigned URLs are already public in production)."""
         ...
 
     def delete_object(self, key: str) -> None: ...

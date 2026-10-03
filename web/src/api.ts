@@ -383,6 +383,7 @@ export interface DiscoveryRun {
   calls_made: number;
   estimated_cost_cents: number;
   candidates_found: number;
+  error: string | null;
   started_at: string;
   finished_at: string | null;
 }

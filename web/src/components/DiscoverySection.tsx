@@ -141,12 +141,17 @@ export function DiscoverySection({
         <h4 className="text-sm font-medium">Recent runs</h4>
         <ul className="space-y-1 text-xs">
           {runs.slice(0, 5).map((r) => (
-            <li key={r.id} className="flex items-center gap-2">
+            <li key={r.id} className="flex flex-wrap items-center gap-2">
               <RunStatusBadge status={r.status} />
               <span>{r.kind}</span>
               <span className="text-fg-muted">
                 {r.calls_made} calls · {r.candidates_found} found · {r.estimated_cost_cents}¢
               </span>
+              {r.error && (
+                <span className="text-red-600" title={r.error} data-testid="run-error">
+                  {r.error}
+                </span>
+              )}
             </li>
           ))}
         </ul>
