@@ -7,8 +7,21 @@ Status: accepted. Context: `docs/specs/evidence.md`, CLAUDE.md #6 (evidence immu
 
 1. **Backends behind env, fakes in CI.** `CAPTURE_BACKEND` (playwright|fake), `TSA_BACKEND`
    (rfc3161|fake), and a dedicated write-once evidence storage selected by `STORAGE_BACKEND`.
-   `playwright`/`rfc3161ng` are lazy-imported (the `capture` extra), so CI runs on fakes with no
-   browser/TSA/network. `reportlab` (PDF) is a main dependency (pure-python).
+   `playwright`/`rfc3161-client` are lazy-imported (the `capture` extra), so CI runs on fakes with
+   no browser/TSA/network. `reportlab` (PDF) is a main dependency (pure-python).
+
+   **Timestamping uses sigstore's `rfc3161-client`** (strict DER, Rust-backed; verifies EC and
+   RSA). It replaced `rfc3161ng`, which could not verify EC-signed tokens and mis-encoded the
+   signed attributes as BER so verification never actually worked. **Trust is anchored to roots
+   pinned in the repo** (`api/app/evidence_roots/tsa_pinned_roots.pem`), NOT to the CA embedded in
+   the token: verification picks the signing cert bearing the `timeStamping` EKU, requires it to
+   chain to a pinned root, and checks the signature over exactly the manifest bytes; at request
+   time it also checks the TSA echoed the request nonce. Without pinning, anyone who could write to
+   the evidence store could mint a self-signed token that "verifies" — defeating CLAUDE.md #6. The
+   configured TSAs are **freetsa.org and sigstore**, the two whose responses parse under the strict
+   parser and whose roots we pin (DigiCert/Sectigo/Apple return a non-DER-sorted certificate SET
+   the parser rejects). Adding a TSA means pinning its root. The ops day-1 tool
+   (`ops/capture/capture.py`) carries its own copy of the pinned roots in `ops/capture/tsa_roots/`.
 
 2. **Browser SSRF closes the DNS-rebinding hole.** The `context.route` handler doesn't validate
    then `continue_()` (which would let the browser re-resolve + connect). It **aborts non-GET**

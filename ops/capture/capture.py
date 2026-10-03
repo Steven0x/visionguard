@@ -41,12 +41,18 @@ from pathlib import Path
 
 TOOL_VERSION = "vg-capture/0.2.0"
 
-# TSAs tried in order; the first one that answers wins.
+# TSAs tried in order; the first one that answers wins. Both roots are pinned in tsa_roots/ and
+# both parse under rfc3161-client's strict DER parser (DigiCert/Sectigo/Apple do not). Adding a
+# TSA means pinning its root in tsa_roots/tsa_pinned_roots.pem.
 TSA_URLS = [
     "https://freetsa.org/tsr",
-    "http://timestamp.digicert.com",
-    "http://timestamp.sectigo.com",
+    "https://timestamp.sigstore.dev/api/v1/timestamp",
 ]
+
+# Pinned TSA trust anchors (copies of api/app/evidence_roots/*). Verification chains the token's
+# signing cert to these, NOT to the CA embedded in the token — otherwise a self-made CA in a
+# forged token would "verify". Keep in sync with the api's evidence_roots/.
+TSA_ROOTS_DIR = Path(__file__).parent / "tsa_roots"
 
 EVIDENCE_FILES = ["screenshot.png", "page.html", "page.mhtml", "meta.json"]
 
@@ -66,29 +72,39 @@ def sha256_file(path: Path) -> str:
 def verify_token(token: bytes, data: bytes) -> tuple[bool, str]:
     """Verify an RFC 3161 token over exactly `data`. Return (ok, detail).
 
-    Uses sigstore's `rfc3161-client` (strict DER, verifies EC and RSA). The signing chain is
-    embedded in the token (`certReq=True`), so verification is self-contained: the signer (the
-    non-CA leaf) must chain to the embedded CA(s) and its signature must cover `data`.
+    Uses sigstore's `rfc3161-client` (strict DER, verifies EC and RSA). Trust is anchored to the
+    roots pinned in tsa_roots/, NOT to the CA embedded in the token: the signer (the cert bearing
+    the timeStamping EKU) must chain to a pinned root and its signature must cover `data`.
     """
     try:
         from cryptography import x509
+        from cryptography.x509.oid import ExtendedKeyUsageOID
         from rfc3161_client import VerifierBuilder, decode_timestamp_response
     except ImportError:
         return False, "rfc3161-client not installed (pip install rfc3161-client)"
     try:
+        roots = x509.load_pem_x509_certificates((TSA_ROOTS_DIR / "tsa_pinned_roots.pem").read_bytes())
+        ints_path = TSA_ROOTS_DIR / "tsa_pinned_intermediates.pem"
+        intermediates = x509.load_pem_x509_certificates(ints_path.read_bytes()) if ints_path.exists() else []
+
         response = decode_timestamp_response(token)
         certs = [x509.load_der_x509_certificate(c) for c in response.signed_data.certificates]
 
-        def _is_ca(cert) -> bool:
-            try:
-                return cert.extensions.get_extension_for_class(x509.BasicConstraints).value.ca
-            except x509.ExtensionNotFound:
-                return False
+        def _signer():
+            for cert in certs:
+                try:
+                    eku = cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+                except x509.ExtensionNotFound:
+                    continue
+                if ExtendedKeyUsageOID.TIME_STAMPING in eku:
+                    return cert
+            raise ValueError("token has no signing cert with the timeStamping EKU")
 
-        leaf = next(c for c in certs if not _is_ca(c))
-        builder = VerifierBuilder().tsa_certificate(leaf)
-        for ca in (c for c in certs if _is_ca(c)):
-            builder = builder.add_root_certificate(ca)
+        builder = VerifierBuilder().tsa_certificate(_signer())
+        for root in roots:
+            builder = builder.add_root_certificate(root)
+        for intermediate in intermediates:
+            builder = builder.add_intermediate_certificate(intermediate)
         builder.build().verify_message(response, data)
         return True, response.tst_info.gen_time.isoformat()
     except Exception as e:
@@ -98,12 +114,13 @@ def verify_token(token: bytes, data: bytes) -> tuple[bool, str]:
 def get_rfc3161_token(data: bytes) -> tuple[bytes | None, str | None, str | None]:
     """Return (token, tsa_url, error). Never raises: evidence is still saved if every TSA fails."""
     try:
-        from rfc3161_client import TimestampRequestBuilder
+        from rfc3161_client import TimestampRequestBuilder, decode_timestamp_response
     except ImportError:
         return None, None, "rfc3161-client not installed (pip install rfc3161-client)"
     import urllib.request
 
-    body = TimestampRequestBuilder().data(data).build().as_bytes()
+    request = TimestampRequestBuilder().data(data).build()
+    body = request.as_bytes()
     errors = []
     for url in TSA_URLS:
         try:
@@ -112,7 +129,10 @@ def get_rfc3161_token(data: bytes) -> tuple[bytes | None, str | None, str | None
             )
             with urllib.request.urlopen(req, timeout=20) as resp:  # noqa: S310 - fixed TSA list
                 token = resp.read()
-            # Sanity check: the token must verify against our data and a valid signature.
+            # The TSA must echo our nonce, and the token must verify against our data and a
+            # signer that chains to a pinned root.
+            if decode_timestamp_response(token).tst_info.nonce != request.nonce:
+                raise ValueError("TSA response nonce does not match the request")
             ok, detail = verify_token(token, data)
             if not ok:
                 raise ValueError(f"token failed verification: {detail}")

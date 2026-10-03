@@ -5,16 +5,21 @@ deterministic token. Neither raises — evidence is still sealed if timestamping
 `untimestamped` and retried by a beat task.
 
 The real path uses sigstore's `rfc3161-client` (Rust-backed, strict DER). The stored token is
-the full DER-encoded `TimeStampResp` (with the TSA's signing chain embedded,
-`certReq=True`). Verification re-parses that response and checks the signature over exactly
-these manifest bytes against the embedded signing cert — detecting any tampering of the token
-or the manifest. (We replaced `rfc3161ng`, which could not verify EC-signed tokens and
-mis-encoded the signed attributes as BER so RSA tokens failed too.)
+the full DER-encoded `TimeStampResp` (with the TSA's signing cert embedded, `certReq=True`).
+
+Trust is anchored to **roots pinned in the repo** (`evidence_roots/tsa_pinned_roots.pem`), NOT
+to the CA embedded in the token. This matters for chain-of-custody (CLAUDE.md #6): if we trusted
+the embedded CA, anyone who could write to the evidence store could mint a token with a self-made
+CA + signing cert and have it "verify", backdating or re-pointing evidence at will. Verification
+therefore: (1) picks the signing cert in the token that carries the `timeStamping` EKU, (2)
+requires it to chain to a pinned root (through pinned intermediates), and (3) checks the signature
+covers exactly these manifest bytes. Adding a TSA means pinning its root here. At request time we
+also check the TSA echoed our nonce (replay/substitution defence during acquisition).
 
 Note: `rfc3161-client` is strict about DER ordering in the response's certificate SET; some
-public TSAs (DigiCert, Sectigo) return a non-sorted SET it refuses to parse, so the TSA list
-should lead with a compatible TSA (e.g. freetsa.org). Incompatible TSAs are skipped like any
-other failure and the next one is tried.
+public TSAs (DigiCert, Sectigo, Apple) return a non-sorted SET it refuses to parse, so the TSA
+list is the two we pin and have verified end-to-end (freetsa.org and sigstore). Incompatible
+TSAs are skipped like any other failure and the next one is tried.
 """
 
 from __future__ import annotations
@@ -22,12 +27,15 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from api.app.config import get_settings
 
 _FAKE_PREFIX = b"vg-fake-tsa-v1:"
 _TSA_CONTENT_TYPE = "application/timestamp-query"
+_ROOTS_DIR = Path(__file__).parent / "evidence_roots"
 
 
 @dataclass
@@ -52,42 +60,64 @@ def get_timestamp(manifest_bytes: bytes) -> TimestampResult:
 
 
 def verify_timestamp(token: bytes, manifest_bytes: bytes) -> bool:
-    """True if the token is a valid timestamp over exactly these manifest bytes."""
+    """True if the token is a valid timestamp over exactly these manifest bytes, signed by a
+    TSA that chains to a pinned root."""
     if token.startswith(_FAKE_PREFIX):
         return token == _FAKE_PREFIX + hashlib.sha256(manifest_bytes).digest()
     try:  # pragma: no cover - real TSA path, exercised only with the [capture] extra
         from rfc3161_client import decode_timestamp_response
 
         response = decode_timestamp_response(token)
-        verifier = _build_verifier(response)
-        verifier.verify_message(response, manifest_bytes)
+        _build_verifier(response).verify_message(response, manifest_bytes)
         return True
     except Exception:
         return False
 
 
-def _build_verifier(response: Any) -> Any:  # pragma: no cover - real TSA path
-    """Build a Verifier trusting the signing chain embedded in the response.
+@lru_cache(maxsize=1)
+def _pinned_certs() -> tuple[list[Any], list[Any]]:  # pragma: no cover - real TSA path
+    from cryptography import x509
 
-    The TSA cert is in the token (`certReq=True` at request time), so verification is
-    self-contained: the signer (the non-CA leaf) must chain to the embedded CA(s) and its
-    signature must cover the manifest. Pinning the TSA's out-of-band root is a future hardening.
+    def _load(name: str) -> list[Any]:
+        path = _ROOTS_DIR / name
+        return x509.load_pem_x509_certificates(path.read_bytes()) if path.exists() else []
+
+    return _load("tsa_pinned_roots.pem"), _load("tsa_pinned_intermediates.pem")
+
+
+def _signing_cert(certs: list[Any]) -> Any:  # pragma: no cover - real TSA path
+    """The cert that signed the token: the one bearing the timeStamping EKU. Reject if absent —
+    a timestamp signer MUST carry id-kp-timeStamping (RFC 3161 §2.3)."""
+    from cryptography import x509
+    from cryptography.x509.oid import ExtendedKeyUsageOID
+
+    for cert in certs:
+        try:
+            eku = cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+        except x509.ExtensionNotFound:
+            continue
+        if ExtendedKeyUsageOID.TIME_STAMPING in eku:
+            return cert
+    raise ValueError("token has no signing cert with the timeStamping EKU")
+
+
+def _build_verifier(response: Any) -> Any:  # pragma: no cover - real TSA path
+    """Build a Verifier that trusts only the pinned roots. The signing leaf comes from the token
+    (TSAs rotate signing certs) but it must chain to a root we shipped, not to the token's own CA.
     """
     from cryptography import x509
     from rfc3161_client import VerifierBuilder
 
     certs = [x509.load_der_x509_certificate(c) for c in response.signed_data.certificates]
-
-    def _is_ca(cert: x509.Certificate) -> bool:
-        try:
-            return cert.extensions.get_extension_for_class(x509.BasicConstraints).value.ca
-        except x509.ExtensionNotFound:
-            return False
-
-    leaf = next(c for c in certs if not _is_ca(c))
+    leaf = _signing_cert(certs)
+    roots, intermediates = _pinned_certs()
+    if not roots:
+        raise ValueError("no pinned TSA roots available ([capture] extra / evidence_roots)")
     builder = VerifierBuilder().tsa_certificate(leaf)
-    for ca in (c for c in certs if _is_ca(c)):
-        builder = builder.add_root_certificate(ca)
+    for root in roots:
+        builder = builder.add_root_certificate(root)
+    for intermediate in intermediates:
+        builder = builder.add_intermediate_certificate(intermediate)
     return builder.build()
 
 
@@ -113,8 +143,10 @@ def _rfc3161_timestamp(
             # Parse to surface a bad/unsupported response now (and read the TSA time), but
             # store the raw DER so verification re-parses exactly what the TSA returned.
             response = decode_timestamp_response(resp.content)
+            if response.tst_info.nonce != request.nonce:
+                raise ValueError("TSA response nonce does not match the request")
             if not verify_timestamp(resp.content, manifest_bytes):
-                raise ValueError("token failed self-verification")
+                raise ValueError("token failed verification against the pinned TSA roots")
             return TimestampResult(
                 token=resp.content,
                 tsa_url=url,

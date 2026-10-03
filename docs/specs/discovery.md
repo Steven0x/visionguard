@@ -40,10 +40,15 @@ All routes sit behind `require_workspace_access`.
    (a) the workspace admin has explicitly opted in by setting `second_reverse_engine=yandex_images`
    (the change is **audited**: `discovery.second_engine_changed`); (b) the subject has **active
    biometric consent and is not geo-blocked** (`biometric_features_enabled`); and (c) the subject
-   has **no sensitive case** (CLAUDE.md #7). The per-subject gate is
-   `services/discovery.yandex_reverse_allowed`, applied in `reverse_image_scan` (Google Lens is
-   unaffected). **Bing was removed** (no robust SerpApi Bing reverse-by-URL engine; Bing's APIs
-   were retired — CLAUDE.md). **TinEye** is used only when `discovery_settings.tineye_enabled`
+   has **no sensitive case** (CLAUDE.md #7) — **any** case with `sensitive=True`, including
+   terminal/closed ones (fail-closed; `_has_sensitive_case` does not filter by case state). The
+   per-subject gate is `services/discovery.yandex_reverse_allowed`, enforced in
+   `reverse_image_scan` — **the sole call site** (Google Lens is unaffected). The gate currently
+   reuses the subject's **generic biometric consent**; it does **not** yet capture a Yandex- or
+   Russia-specific cross-border-transfer disclosure, so counsel's answer to the claims-matrix open
+   question may require a distinct consent before the opt-in can be honored. **Bing was removed**
+   (no robust SerpApi Bing reverse-by-URL engine; Bing's APIs were retired — CLAUDE.md). **TinEye**
+   is used only when `discovery_settings.tineye_enabled`
    (off by default). All providers run under the one per-workspace budget; results are **deduped by
    canonical URL** across providers (the `unique(subject_id, source_key)` constraint +
    `_candidate_exists`).
