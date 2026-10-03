@@ -39,7 +39,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-TOOL_VERSION = "vg-capture/0.1.0"
+TOOL_VERSION = "vg-capture/0.2.0"
 
 # TSAs tried in order; the first one that answers wins.
 TSA_URLS = [
@@ -63,21 +63,59 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def verify_token(token: bytes, data: bytes) -> tuple[bool, str]:
+    """Verify an RFC 3161 token over exactly `data`. Return (ok, detail).
+
+    Uses sigstore's `rfc3161-client` (strict DER, verifies EC and RSA). The signing chain is
+    embedded in the token (`certReq=True`), so verification is self-contained: the signer (the
+    non-CA leaf) must chain to the embedded CA(s) and its signature must cover `data`.
+    """
+    try:
+        from cryptography import x509
+        from rfc3161_client import VerifierBuilder, decode_timestamp_response
+    except ImportError:
+        return False, "rfc3161-client not installed (pip install rfc3161-client)"
+    try:
+        response = decode_timestamp_response(token)
+        certs = [x509.load_der_x509_certificate(c) for c in response.signed_data.certificates]
+
+        def _is_ca(cert) -> bool:
+            try:
+                return cert.extensions.get_extension_for_class(x509.BasicConstraints).value.ca
+            except x509.ExtensionNotFound:
+                return False
+
+        leaf = next(c for c in certs if not _is_ca(c))
+        builder = VerifierBuilder().tsa_certificate(leaf)
+        for ca in (c for c in certs if _is_ca(c)):
+            builder = builder.add_root_certificate(ca)
+        builder.build().verify_message(response, data)
+        return True, response.tst_info.gen_time.isoformat()
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"
+
+
 def get_rfc3161_token(data: bytes) -> tuple[bytes | None, str | None, str | None]:
     """Return (token, tsa_url, error). Never raises: evidence is still saved if every TSA fails."""
     try:
-        import rfc3161ng
+        from rfc3161_client import TimestampRequestBuilder
     except ImportError:
-        return None, None, "rfc3161ng not installed (pip install rfc3161ng)"
+        return None, None, "rfc3161-client not installed (pip install rfc3161-client)"
+    import urllib.request
+
+    body = TimestampRequestBuilder().data(data).build().as_bytes()
     errors = []
     for url in TSA_URLS:
         try:
-            ts = rfc3161ng.RemoteTimestamper(
-                url, hashname="sha256", include_tsa_certificate=True, timeout=20
+            req = urllib.request.Request(
+                url, data=body, headers={"Content-Type": "application/timestamp-query"}
             )
-            token = ts.timestamp(data=data)
-            # Sanity check: the token must match our data and its signature must be valid.
-            rfc3161ng.check_timestamp(token, data=data, hashname="sha256")
+            with urllib.request.urlopen(req, timeout=20) as resp:  # noqa: S310 - fixed TSA list
+                token = resp.read()
+            # Sanity check: the token must verify against our data and a valid signature.
+            ok, detail = verify_token(token, data)
+            if not ok:
+                raise ValueError(f"token failed verification: {detail}")
             return token, url, None
         except Exception as e:  # try the next TSA
             errors.append(f"{url}: {type(e).__name__}: {e}")
@@ -160,11 +198,9 @@ def capture_one(page, url: str, out_dir: Path, case: str, subject: str, note: st
     if token:
         (out_dir / "manifest.tsr").write_bytes(token)
         ts_info["token_sha256"] = hashlib.sha256(token).hexdigest()
-        try:
-            import rfc3161ng
-            ts_info["tsa_time_utc"] = rfc3161ng.get_timestamp(token).isoformat()
-        except Exception:
-            pass
+        ok, detail = verify_token(token, manifest_bytes)
+        if ok:
+            ts_info["tsa_time_utc"] = detail
     (out_dir / "timestamp.json").write_text(json.dumps(ts_info, indent=2), encoding="utf-8")
 
     load_ok = error is None and not page.url.startswith("chrome-error://") and (status is None or status < 400)
@@ -250,14 +286,12 @@ def cmd_verify(args) -> int:
 
     tsr = folder / "manifest.tsr"
     if tsr.exists():
-        try:
-            import rfc3161ng
-            token = tsr.read_bytes()
-            rfc3161ng.check_timestamp(token, data=manifest_bytes, hashname="sha256")
-            print(f"OK   timestamp  {rfc3161ng.get_timestamp(token).isoformat()} (signature and imprint valid)")
-        except Exception as e:
+        ts_ok, detail = verify_token(tsr.read_bytes(), manifest_bytes)
+        if ts_ok:
+            print(f"OK   timestamp  {detail} (signature and imprint valid)")
+        else:
             ok = False
-            print(f"BAD  timestamp  {type(e).__name__}: {e}")
+            print(f"BAD  timestamp  {detail}")
     else:
         print("WARN no timestamp token in this capture")
 

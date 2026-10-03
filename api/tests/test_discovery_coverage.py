@@ -13,6 +13,8 @@ from worker.discovery import keyword_scan
 from api.app.config import get_settings
 from api.app.db.session import tenant_session
 from api.app.models.assets import SubjectKeyword
+from api.app.models.audit import AuditLog
+from api.app.models.cases import Case, CaseStatus
 from api.app.models.discovery import (
     CandidateKind,
     DiscoveryCandidate,
@@ -225,6 +227,83 @@ def test_inbox_prefers_candidate_suggested_claim_when_supported(db, new_workspac
     item = next(i for i in items if i.candidate.source == "name_sweep")
     assert "impersonation" in item.supported_claims
     assert item.suggested_claim == "impersonation"
+
+
+def _grant_biometrics(schema: str, subject_id: int) -> None:
+    with tenant_session(schema) as s:
+        subject = s.get(Subject, subject_id)
+        assert subject is not None
+        subject.biometrics_blocked = False
+        s.add(
+            ConsentRecord(
+                subject_id=subject_id, type=ConsentType.biometric, file_key="k",
+                file_name="c.pdf", content_type="application/pdf", signer_name="x",
+                signed_date=date(2026, 1, 1), status=RecordStatus.active,
+            )
+        )
+
+
+def test_yandex_reverse_allowed_gates(db, new_workspace):
+    schema = new_workspace.schema_name
+    sid, _ = authorized_subject(schema)  # no biometric consent, blocked by default
+    with tenant_session(schema) as s:
+        assert svc.yandex_reverse_allowed(s, sid) is False  # no consent
+    _grant_biometrics(schema, sid)
+    with tenant_session(schema) as s:
+        assert svc.yandex_reverse_allowed(s, sid) is True  # consent + not sensitive
+    with tenant_session(schema) as s:  # a sensitive case → never
+        s.add(Case(subject_id=sid, claim_type="ncii", status=CaseStatus.discovered, sensitive=True))
+    with tenant_session(schema) as s:
+        assert svc.yandex_reverse_allowed(s, sid) is False
+
+
+def test_reverse_scan_gates_yandex_per_subject(db, new_workspace, monkeypatch: pytest.MonkeyPatch):
+    import worker.discovery as wd
+    from worker.discovery import reverse_image_scan
+
+    from api.app.providers.fakes import FakeReverseImageProvider
+
+    schema = new_workspace.schema_name
+    sid, aid = authorized_subject(schema, ready_asset=True)
+    with tenant_session(schema) as s:  # workspace admin opts into Yandex
+        settings = svc.get_or_create_settings(s)
+        settings.second_reverse_engine = "yandex_images"
+
+    seen: list[str] = []
+
+    def _factory(*, tineye_enabled, second_engine):
+        seen.append(second_engine)
+        return [FakeReverseImageProvider()]
+
+    monkeypatch.setattr(wd, "get_reverse_image_providers", _factory)
+
+    reverse_image_scan.run(new_workspace.id, sid, aid)  # no consent → gated off
+    assert seen[-1] == "off"
+
+    _grant_biometrics(schema, sid)
+    reverse_image_scan.run(new_workspace.id, sid, aid)  # consent + not sensitive → on
+    assert seen[-1] == "yandex_images"
+
+
+def test_bing_is_rejected_by_the_api(client: TestClient, auth_header, db, new_workspace):
+    r = client.put(
+        f"/workspaces/{new_workspace.id}/discovery/settings",
+        headers=auth_header(db.admin_user_id),
+        json={"second_reverse_engine": "bing"},
+    )
+    assert r.status_code == 422  # bing removed from the allowed engines
+
+
+def test_second_engine_opt_in_is_audited(client: TestClient, auth_header, db, new_workspace):
+    r = client.put(
+        f"/workspaces/{new_workspace.id}/discovery/settings",
+        headers=auth_header(db.admin_user_id),
+        json={"second_reverse_engine": "yandex_images"},
+    )
+    assert r.status_code == 200 and r.json()["second_reverse_engine"] == "yandex_images"
+    with tenant_session(new_workspace.schema_name) as s:
+        actions = list(s.scalars(select(AuditLog.action)).all())
+    assert "discovery.second_engine_changed" in actions
 
 
 def test_discovery_settings_exposes_safe_mode(

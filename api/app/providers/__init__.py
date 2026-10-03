@@ -34,8 +34,8 @@ def get_reverse_image_providers(
     providers: list[ReverseImageProvider] = [
         SerpApiLensProvider(settings.serpapi_key, settings.serpapi_cost_cents_per_call)
     ]
-    # A second SerpApi reverse engine (yandex_images default; bing selectable), per-workspace.
-    if second_engine and second_engine != "off":
+    # Second SerpApi reverse engine (Yandex only; biometric-gated + admin opt-in, see the worker).
+    if second_engine == "yandex_images":
         providers.append(
             SerpApiReverseProvider(
                 second_engine, settings.serpapi_key, settings.serpapi_cost_cents_per_call

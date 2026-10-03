@@ -415,6 +415,30 @@ def _is_risky(text: str) -> bool:
     )
 
 
+def _has_sensitive_case(session: Session, subject_id: int) -> bool:
+    from api.app.models.cases import Case
+
+    return (
+        session.scalar(
+            select(Case.id)
+            .where(Case.subject_id == subject_id, Case.sensitive.is_(True))
+            .limit(1)
+        )
+        is not None
+    )
+
+
+def yandex_reverse_allowed(session: Session, subject_id: int) -> bool:
+    """Yandex reverse image search is face-similarity-heavy, so we treat it as biometric: it may
+    run for a subject only with active biometric consent + not geo-blocked (CLAUDE.md #1), and
+    NEVER for a subject with any sensitive case (CLAUDE.md #7). The per-workspace admin opt-in
+    (second_reverse_engine='yandex_images', audited) is checked separately by the caller. See
+    docs/specs/discovery.md + the claims-matrix open question."""
+    return biometric_features_enabled(session, subject_id) and not _has_sensitive_case(
+        session, subject_id
+    )
+
+
 def build_keyword_queries(
     session: Session, subject: Subject, *, safe_mode: bool
 ) -> list[KeywordQuery]:
