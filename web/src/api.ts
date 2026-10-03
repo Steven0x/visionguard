@@ -391,7 +391,7 @@ export interface DiscoverySettings {
   monthly_call_budget: number;
   scan_frequency: "off" | "daily" | "weekly";
   tineye_enabled: boolean;
-  second_reverse_engine: "off" | "yandex_images" | "bing";
+  second_reverse_engine: "off" | "yandex_images";
   thumbnail_retention_days: number;
   /** Read-only: true while no real CSAM scanner is connected (discovery in safe mode). */
   safe_mode: boolean;

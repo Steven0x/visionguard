@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from api.app.audit.service import record_audit
 from api.app.auth.deps import get_tenant_session, require_role, require_workspace_access
 from api.app.config import get_settings
 from api.app.csam import safe_discovery_mode
@@ -115,7 +116,7 @@ class SettingsIn(BaseModel):
     monthly_call_budget: int | None = Field(default=None, ge=0, le=100_000)
     scan_frequency: ScanFrequency | None = None
     tineye_enabled: bool | None = None
-    second_reverse_engine: Literal["off", "yandex_images", "bing"] | None = None
+    second_reverse_engine: Literal["off", "yandex_images"] | None = None
     thumbnail_retention_days: int | None = Field(default=None, ge=1, le=365)
 
 
@@ -251,7 +252,21 @@ def update_discovery_settings(
     session: Session = Depends(get_tenant_session),
 ) -> SettingsOut:
     settings = svc.get_or_create_settings(session)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    before_engine = settings.second_reverse_engine
+    for field, value in changes.items():
         setattr(settings, field, value)
     session.flush()
+    # The Yandex opt-in is a biometric decision (face-similarity + cross-border transfer): audit
+    # every change of the second reverse engine (CLAUDE.md #1).
+    if "second_reverse_engine" in changes and changes["second_reverse_engine"] != before_engine:
+        record_audit(
+            session,
+            workspace_id=workspace.id,
+            actor_staff_id=staff.id,
+            action="discovery.second_engine_changed",
+            entity_type="discovery_settings",
+            entity_id="1",
+            meta={"from": before_engine, "to": settings.second_reverse_engine},
+        )
     return _settings_out(settings)

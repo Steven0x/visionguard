@@ -74,7 +74,13 @@ def reverse_image_scan(workspace_id: int, subject_id: int, asset_id: int) -> str
         assert settings is not None  # noqa: S101 - just created above
         budget = settings.monthly_call_budget
         tineye_enabled = settings.tineye_enabled
+        # Yandex is treated as biometric (face-similarity) + never for sensitive subjects — gate it
+        # per-subject on top of the per-workspace admin opt-in (CLAUDE.md #1/#7).
         second_engine = settings.second_reverse_engine
+        if second_engine == "yandex_images" and not svc.yandex_reverse_allowed(
+            session, subject_id
+        ):
+            second_engine = "off"
         run = svc.start_run(
             session, kind=RunKind.reverse_image, subject_id=subject_id, asset_id=asset_id
         )

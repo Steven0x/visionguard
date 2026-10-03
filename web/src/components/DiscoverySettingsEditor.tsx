@@ -65,8 +65,7 @@ export function DiscoverySettingsEditor({ workspaceId }: { workspaceId: number }
           className="border p-1"
         >
           <option value="off">off</option>
-          <option value="yandex_images">Yandex Images</option>
-          <option value="bing">Bing (unreliable)</option>
+          <option value="yandex_images">Yandex Images (biometric — consent required)</option>
         </select>
       </label>
       <button className="rounded bg-gray-800 px-2 py-1 text-white">Save</button>

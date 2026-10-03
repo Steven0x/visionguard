@@ -163,7 +163,10 @@ class Settings(BaseSettings):
     capture_nav_timeout_ms: int = 45_000
     capture_max_page_px: int = 20_000  # cap full-page screenshot height
     capture_tool_version: str = "vg-capture/1.0.0"
-    # TSAs tried in order; first answer wins. Real backend only.
+    # TSAs tried in order; first answer wins. Real backend only. freetsa leads because
+    # rfc3161-client's strict DER parser rejects DigiCert/Sectigo's non-sorted certificate SET
+    # (they are kept only as last-resort fallbacks and skipped if they won't parse). See
+    # evidence_ts.py.
     tsa_urls: str = (
         "https://freetsa.org/tsr,http://timestamp.digicert.com,http://timestamp.sectigo.com"
     )

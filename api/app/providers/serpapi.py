@@ -77,9 +77,9 @@ _REVERSE_MATCH_KEYS = (
 
 
 class SerpApiReverseProvider:
-    """A second reverse-image engine via SerpApi. `yandex_images` is well supported; `bing` is
-    selectable but unreliable — SerpApi has no robust Bing reverse-image-by-URL engine, and Bing's
-    own search APIs were retired (see docs/specs/discovery.md). Engine is per-workspace config."""
+    """The second reverse-image engine via SerpApi (`yandex_images`). It is face-similarity-heavy,
+    so it is treated as biometric — gated on biometric consent + a per-workspace admin opt-in and
+    never used for sensitive subjects (enforced in the worker). See docs/specs/discovery.md."""
 
     def __init__(self, engine: str, api_key: str, cost_cents: int) -> None:
         self.name = f"serpapi_{engine}"

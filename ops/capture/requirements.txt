@@ -1,2 +1,2 @@
 playwright>=1.45
-rfc3161ng>=2.1
+rfc3161-client>=1.0.0

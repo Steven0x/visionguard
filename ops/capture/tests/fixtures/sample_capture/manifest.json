@@ -1,0 +1,12 @@
+{
+  "capture_finished_utc": "2026-10-03T00:00:00+00:00",
+  "case_id": "VG-FIXTURE",
+  "files": {
+    "meta.json": "cc972e697c5132e92fd5bf8ab50cad846f3bd53a672bd24e62102969bf653d11",
+    "page.html": "4d009a9da982f065d45384a70f29c8fc068d33873bf4bcfb24be2a9c9a7ce6e2"
+  },
+  "final_url": "https://example.com/",
+  "hash_algorithm": "sha256",
+  "requested_url": "https://example.com/",
+  "tool": "vg-capture/0.2.0"
+}

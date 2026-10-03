@@ -33,14 +33,20 @@ All routes sit behind `require_workspace_access`.
    like `utm_*`, `gclid`, `fbclid`) and deduped (within the batch and against existing
    candidates). Stored as `link` candidates.
 2. **Reverse image** per **ready** asset via **SerpApi Google Lens** (visual + exact matches).
-   A **second SerpApi reverse engine** is per-workspace configurable via
-   `discovery_settings.second_reverse_engine` (`off` | `yandex_images` | `bing`, default `off`;
-   `SerpApiReverseProvider`). **Yandex Images** is the recommended second engine; **Bing is
-   selectable but unreliable** — SerpApi has no robust Bing reverse-image-by-URL engine and Bing's
-   own search APIs were retired (CLAUDE.md), so it is flagged in the UI. **TinEye** is used only
-   when `discovery_settings.tineye_enabled` (off by default). All providers run under the one
-   per-workspace budget; results are **deduped by canonical URL** across providers (the
-   `unique(subject_id, source_key)` constraint + `_candidate_exists`).
+   A **second SerpApi reverse engine — Yandex Images** — is per-workspace configurable via
+   `discovery_settings.second_reverse_engine` (`off` | `yandex_images`, default **`off`**;
+   `SerpApiReverseProvider`). Yandex reverse image search is **face-similarity-heavy**, so it is
+   **treated as biometric** (CLAUDE.md #1): it runs for a subject's asset only when **all** hold —
+   (a) the workspace admin has explicitly opted in by setting `second_reverse_engine=yandex_images`
+   (the change is **audited**: `discovery.second_engine_changed`); (b) the subject has **active
+   biometric consent and is not geo-blocked** (`biometric_features_enabled`); and (c) the subject
+   has **no sensitive case** (CLAUDE.md #7). The per-subject gate is
+   `services/discovery.yandex_reverse_allowed`, applied in `reverse_image_scan` (Google Lens is
+   unaffected). **Bing was removed** (no robust SerpApi Bing reverse-by-URL engine; Bing's APIs
+   were retired — CLAUDE.md). **TinEye** is used only when `discovery_settings.tineye_enabled`
+   (off by default). All providers run under the one per-workspace budget; results are **deduped by
+   canonical URL** across providers (the `unique(subject_id, source_key)` constraint +
+   `_candidate_exists`).
 3. **Keyword** search from the subject's identifiers (Slice 3 `keywords.identifiers`) via
    **SerpApi Google**, plus per-handle **impersonation name sweeps**: `site:<platform> "<handle
    or stage name>"` for `instagram.com, tiktok.com, x.com, facebook.com, t.me`
