@@ -121,6 +121,18 @@ Build in this order. Each slice is a vertical cut (UI → API → DB → worker)
 > write-once object-locked evidence bucket, RFC 3161 timestamping (+ untimestamped retry beat),
 > chain-of-custody, `requires_evidence_pack()` filled (fresh sealed capture gates Filed),
 > admin-only PDF pack (reason + sensitive-opt-in logged), and a standalone `vg verify-evidence`.
+> **Follow-up (TSA root/cert health monitoring):** RFC 3161 verification is anchored to roots
+> pinned in the repo (`api/app/evidence_roots/tsa_pinned_roots.pem` + the ops copy in
+> `ops/capture/tsa_roots/`; ADR 0009). Add a **daily beat check** that alerts (same channel as
+> other ops alerts) when **(a)** any pinned TSA root or TSA signing cert is **within 60 days of
+> `notAfter`**, or **(b)** a configured TSA (freetsa, sigstore) starts **failing** — a live
+> round-trip timestamp over a canary manifest no longer verifies against the pinned roots, or a
+> previously-sealed sample token stops verifying. Either makes new captures silently fall back to
+> `untimestamped`, so the alert must fire **before** expiry/outage, not after. Add a **runbook step
+> in `docs/ops/deploy.md` for rotating pinned roots**: fetch the TSA's current root/chain, diff
+> against the pinned PEM, update both the api and ops copies in the same change, re-record the test
+> fixtures, and confirm `make test` + a real `vg verify-evidence` pass; if a TSA is being retired,
+> drop it from `tsa_urls` and its root from the pinned set. **Agents:** reviewer, red-team.
 
 ## Slice 8: Claims and the notice generator
 
