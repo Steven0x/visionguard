@@ -69,10 +69,8 @@ seed-admin: check-venv ## Create the first admin staff member (EMAIL=, CLERK_USE
 seed-demo: check-venv ## Seed a clickable demo workspace + subject + images + review-inbox candidates
 	$(PY) -m api.app.cli seed-demo
 
-lens-tunnel: ## DEV ONLY: expose local MinIO to Google Lens/Yandex via a cloudflared quick tunnel
-	@command -v cloudflared >/dev/null || { echo "Install cloudflared first (brew install cloudflared)."; exit 1; }
-	@echo "Starting a cloudflared quick tunnel to MinIO (http://localhost:9000)…"
-	@echo "Copy the printed https://<name>.trycloudflare.com URL into .env as"
-	@echo "  DISCOVERY_ASSET_PUBLIC_BASE_URL=https://<name>.trycloudflare.com"
-	@echo "then restart the worker. Only takes effect when APP_ENV=dev. Ctrl-C to stop."
-	cloudflared tunnel --url http://localhost:9000
+lens-tunnel: check-venv ## DEV ONLY: expose local MinIO assets to Lens via a GUARDED cloudflared tunnel
+	@# Runs a dev-only allowlist proxy (presigned GETs of the assets bucket only — no other bucket,
+	@# listings, console, writes, or unsigned requests) behind the tunnel. Refuses default MinIO
+	@# creds and APP_ENV != dev. Auto-stops after 15 min. See api/app/dev/lens_proxy.py.
+	$(PY) -m api.app.dev.lens_proxy

@@ -158,18 +158,33 @@ Safe mode stays on (CSAM fake), so risky-term queries are suppressed and the ban
 Reverse-image scans hand the provider a **presigned URL to the subject's asset**, which the
 provider's servers (Google Lens, Yandex) fetch directly. Locally MinIO presigns a **`localhost`**
 URL the providers can't reach, so a real reverse scan returns **0 matches** (not an error — the
-provider just sees nothing). For dev, expose MinIO through a tunnel and sign asset URLs against it:
+provider just sees nothing). For dev, expose MinIO through a **guarded** tunnel:
 
 ```
-make lens-tunnel                         # cloudflared quick tunnel → http://localhost:9000
-# then in .env, with the printed hostname:
+# 1) Use NON-DEFAULT MinIO creds (default minioadmin is a public signing key → forgeable
+#    presigns). In .env set a matching pair and restart MinIO + the worker:
+MINIO_ROOT_USER=vg-dev            STORAGE_ACCESS_KEY_ID=vg-dev
+MINIO_ROOT_PASSWORD=<random>      STORAGE_SECRET_ACCESS_KEY=<same random>
+#    docker compose up -d minio minio-setup
+# 2) make lens-tunnel      # starts the guarded proxy + a cloudflared quick tunnel
+# 3) paste the printed hostname into .env and restart the worker:
 DISCOVERY_ASSET_PUBLIC_BASE_URL=https://<name>.trycloudflare.com
 ```
-`generate_download_url(..., public_base_url=…)` then signs the presigned URL (SigV4) against the
-tunnel host so the signature matches what the provider connects to; the tunnel forwards to MinIO.
+
+`make lens-tunnel` (→ `api/app/dev/lens_proxy.py`) does **not** tunnel MinIO directly. It runs a
+tiny **allowlist proxy** between the tunnel and MinIO that permits **only** a non-expired
+**presigned GET of an object in the assets bucket** and refuses everything else — any other method,
+any other bucket (incl. the **evidence** bucket), **bucket listings**, object/bucket sub-resource
+ops (acl, tagging, multipart, retention, …), the **console**, and **unsigned** requests (`authorize`,
+unit-tested per rejection). It forwards the exact path+query and preserves the incoming Host so
+MinIO validates the presign (signed against the tunnel host); it never holds the signing secret.
+It **refuses to start** unless `APP_ENV=dev` **and** MinIO is on non-default creds, **auto-stops
+after 15 min**, and prints a *"the tunnel is public while running"* warning.
+
+`generate_download_url(..., public_base_url=…)` signs the presigned URL against the tunnel host.
 This is **dev-only**: `Settings.dev_lens_asset_base_url` returns the base **only when APP_ENV=dev**,
-so setting the env var in staging/production has no effect. **Production** needs nothing here — R2
-presigned URLs are already public, with a short TTL (`storage_signed_url_ttl_seconds`, default 300s).
+so the env var has no effect in staging/production. **Production** needs none of this — R2 presigned
+URLs are already public, with a short TTL (`storage_signed_url_ttl_seconds`, default 300s).
 
 ## Audit
 
