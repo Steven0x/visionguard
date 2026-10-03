@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install dev infra-up infra-down migrate test test-api test-web lint lint-api lint-web fmt seed-admin seed-demo check-venv
+.PHONY: help install dev infra-up infra-down migrate test test-api test-web lint lint-api lint-web fmt seed-admin seed-demo check-venv lens-tunnel
 
 # Load .env if present so local commands see DATABASE_URL / REDIS_URL etc.
 ifneq (,$(wildcard .env))
@@ -68,3 +68,11 @@ seed-admin: check-venv ## Create the first admin staff member (EMAIL=, CLERK_USE
 
 seed-demo: check-venv ## Seed a clickable demo workspace + subject + images + review-inbox candidates
 	$(PY) -m api.app.cli seed-demo
+
+lens-tunnel: ## DEV ONLY: expose local MinIO to Google Lens/Yandex via a cloudflared quick tunnel
+	@command -v cloudflared >/dev/null || { echo "Install cloudflared first (brew install cloudflared)."; exit 1; }
+	@echo "Starting a cloudflared quick tunnel to MinIO (http://localhost:9000)…"
+	@echo "Copy the printed https://<name>.trycloudflare.com URL into .env as"
+	@echo "  DISCOVERY_ASSET_PUBLIC_BASE_URL=https://<name>.trycloudflare.com"
+	@echo "then restart the worker. Only takes effect when APP_ENV=dev. Ctrl-C to stop."
+	cloudflared tunnel --url http://localhost:9000

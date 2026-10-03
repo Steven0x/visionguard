@@ -117,6 +117,12 @@ class Settings(BaseSettings):
     tineye_api_key: str = ""
     serpapi_cost_cents_per_call: int = 1
     tineye_cost_cents_per_call: int = 20
+    # DEV ONLY: a public base URL (e.g. a `make lens-tunnel` cloudflared quick tunnel to local
+    # MinIO) used to sign reverse-image asset URLs so Google Lens/Yandex can actually fetch them.
+    # Local MinIO presigned URLs point at localhost, which the providers can't reach (→ 0 matches).
+    # Ignored unless APP_ENV=dev (see `dev_lens_asset_base_url`). Production needs nothing here:
+    # R2 presigned URLs are already public (short TTL, `storage_signed_url_ttl_seconds`).
+    discovery_asset_public_base_url: str = ""
     # CSAM scanning gate (CLAUDE.md #7) — see api/app/csam.py. Every open-web/uploaded image
     # must pass a `clean` scan before any bytes are stored/sealed. "none" (default) fails closed;
     # "fake" is dev/test-only (refused otherwise below). csam_fake_result drives the fake.
@@ -249,6 +255,14 @@ class Settings(BaseSettings):
     def is_deployed(self) -> bool:
         """A real, network-connected deployment (staging or production) — gets the strict guard."""
         return self.app_env in _DEPLOYED_ENVS
+
+    @property
+    def dev_lens_asset_base_url(self) -> str | None:
+        """The dev-only public base for signing reverse-image asset URLs (so Lens can fetch local
+        MinIO through a tunnel). None unless APP_ENV=dev AND it is configured — so it can never
+        take effect in staging/production even if the env var is set."""
+        base = self.discovery_asset_public_base_url.strip().rstrip("/")
+        return base if base and self.app_env == "dev" else None
 
     @model_validator(mode="after")
     def _guard_test_mode(self) -> Settings:

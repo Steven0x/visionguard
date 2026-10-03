@@ -55,6 +55,7 @@ class RunOut(BaseModel):
     calls_made: int
     estimated_cost_cents: int
     candidates_found: int
+    error: str | None
     started_at: datetime
     finished_at: datetime | None
 

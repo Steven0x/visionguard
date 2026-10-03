@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
+from api.app.config import get_settings
 from api.app.csam import csam_scanner_configured, safe_discovery_mode
 from api.app.db.base import schema_for_workspace
 from api.app.db.session import public_session, tenant_session
@@ -24,7 +25,7 @@ from api.app.models.discovery import (
 from api.app.models.public import Workspace
 from api.app.models.subjects import Subject, SubjectStatus
 from api.app.providers import get_keyword_provider, get_reverse_image_providers
-from api.app.providers.base import ProviderResult
+from api.app.providers.base import ProviderError, ProviderResult
 from api.app.services import billing as billing_svc
 from api.app.services import discovery as svc
 from api.app.services.claim_support import subject_enforcement
@@ -106,25 +107,39 @@ def reverse_image_scan(workspace_id: int, subject_id: int, asset_id: int) -> str
         capped = reserve < len(providers)
         run.calls_made = reserve  # reserve budget before releasing the lock
         session.flush()
+        # In dev, sign against a public tunnel base so Lens/Yandex can fetch local MinIO (None
+        # in prod/staging and tests → normal presigned URL, already public on R2).
         image_url = get_storage().generate_download_url(
-            asset.file_key, filename=asset.file_name, expires_in=_SIGNED_TTL
+            asset.file_key, filename=asset.file_name, expires_in=_SIGNED_TTL,
+            public_base_url=get_settings().dev_lens_asset_base_url,
         )
 
-    cost = candidates = 0
+    # Count only calls SerpApi actually billed (provider returns calls_made/cost; an empty result
+    # set is not billed) — never the reserved amount. A provider failure records the reason.
+    cost = candidates = actual_calls = 0
+    error: str | None = None
     try:
         collected: list[tuple[str, ProviderResult]] = []
         per_provider: dict[str, int] = {}
-        for provider in providers[:reserve]:
-            response = provider.search(image_url)
-            cost += response.cost_cents
-            per_provider[provider.name] = per_provider.get(provider.name, 0) + response.cost_cents
-            # Cost per provider (no secrets — just name/calls/cost).
-            logger.info(
-                "discovery.provider_cost provider=%s calls=%d cost_cents=%d",
-                provider.name, response.calls_made, response.cost_cents,
-            )
-            for result in response.results:
-                collected.append((provider.name, result))
+        try:
+            for provider in providers[:reserve]:
+                response = provider.search(image_url)
+                actual_calls += response.calls_made
+                cost += response.cost_cents
+                per_provider[provider.name] = (
+                    per_provider.get(provider.name, 0) + response.cost_cents
+                )
+                if response.calls_made:
+                    # Cost per provider (no secrets — just name/calls/cost).
+                    logger.info(
+                        "discovery.provider_cost provider=%s calls=%d cost_cents=%d",
+                        provider.name, response.calls_made, response.cost_cents,
+                    )
+                for result in response.results:
+                    collected.append((provider.name, result))
+        except ProviderError as exc:
+            error = str(exc)[:1000]
+            logger.warning("discovery.reverse_image_scan provider error: %s", error)
         with tenant_session(schema) as session:
             for provider_name, result in collected:
                 if svc.add_image_candidate(
@@ -136,16 +151,20 @@ def reverse_image_scan(workspace_id: int, subject_id: int, asset_id: int) -> str
                     candidates += 1
             final_run = session.get(DiscoveryRun, run_id)
             if final_run is not None:
+                status = (
+                    RunStatus.failed if error
+                    else RunStatus.partial if capped
+                    else RunStatus.completed
+                )
                 svc.finish_run(
                     session, workspace_id=workspace_id, actor_staff_id=None, run=final_run,
-                    status=RunStatus.partial if capped else RunStatus.completed,
-                    calls_made=reserve, cost_cents=cost, candidates_found=candidates,
-                    cost_by_provider=per_provider,
+                    status=status, calls_made=actual_calls, cost_cents=cost,
+                    candidates_found=candidates, cost_by_provider=per_provider, error=error,
                 )
-        return "completed"
+        return "failed" if error else "completed"
     except Exception as exc:  # never raises — eager-safe
         _finish(schema, workspace_id, run_id, status=RunStatus.failed,
-                calls_made=reserve, cost_cents=cost, candidates_found=candidates,
+                calls_made=actual_calls, cost_cents=cost, candidates_found=candidates,
                 error=str(exc)[:1000])
         return "failed"
 
@@ -182,19 +201,28 @@ def keyword_scan(workspace_id: int, subject_id: int) -> str:
         run.calls_made = reserve
         session.flush()
 
-    cost = candidates = 0
+    # Count only billed calls (an empty-result query isn't billed) — never the reserved amount.
+    # A SerpApi failure (bad key / quota) stops the loop and records the reason on the run.
+    cost = candidates = actual_calls = 0
+    error: str | None = None
+    provider = get_keyword_provider()
     try:
-        provider = get_keyword_provider()
         collected: list[tuple[svc.KeywordQuery, ProviderResult]] = []
-        for query in queries[:reserve]:
-            response = provider.search(query.text)
-            cost += response.cost_cents
-            logger.info(
-                "discovery.provider_cost provider=%s calls=%d cost_cents=%d",
-                provider.name, response.calls_made, response.cost_cents,
-            )
-            for result in response.results:
-                collected.append((query, result))
+        try:
+            for query in queries[:reserve]:
+                response = provider.search(query.text)
+                actual_calls += response.calls_made
+                cost += response.cost_cents
+                if response.calls_made:
+                    logger.info(
+                        "discovery.provider_cost provider=%s calls=%d cost_cents=%d",
+                        provider.name, response.calls_made, response.cost_cents,
+                    )
+                for result in response.results:
+                    collected.append((query, result))
+        except ProviderError as exc:
+            error = str(exc)[:1000]
+            logger.warning("discovery.keyword_scan provider error: %s", error)
         with tenant_session(schema) as session:
             for query, result in collected:
                 if svc.add_link_candidate(
@@ -206,16 +234,21 @@ def keyword_scan(workspace_id: int, subject_id: int) -> str:
                     candidates += 1
             final_run = session.get(DiscoveryRun, run_id)
             if final_run is not None:
+                status = (
+                    RunStatus.failed if error
+                    else RunStatus.partial if capped
+                    else RunStatus.completed
+                )
                 svc.finish_run(
                     session, workspace_id=workspace_id, actor_staff_id=None, run=final_run,
-                    status=RunStatus.partial if capped else RunStatus.completed,
-                    calls_made=reserve, cost_cents=cost, candidates_found=candidates,
-                    cost_by_provider={provider.name: cost},
+                    status=status, calls_made=actual_calls, cost_cents=cost,
+                    candidates_found=candidates, cost_by_provider={provider.name: cost},
+                    error=error,
                 )
-        return "completed"
+        return "failed" if error else "completed"
     except Exception as exc:
         _finish(schema, workspace_id, run_id, status=RunStatus.failed,
-                calls_made=reserve, cost_cents=cost, candidates_found=candidates,
+                calls_made=actual_calls, cost_cents=cost, candidates_found=candidates,
                 error=str(exc)[:1000])
         return "failed"
 

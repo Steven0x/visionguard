@@ -116,12 +116,19 @@ point, which fails closed until a scanner is wired.
 - Celery **beat**: `dispatch_scheduled_scans` (hourly) enqueues per-workspace scans whose
   `scan_frequency` (`off`/`daily`/`weekly`) is due; `cleanup_expired_thumbnails` (daily).
 - **Monthly call budget** per workspace (`monthly_call_budget`) with a **hard stop at the
-  boundary**: before each provider call the job checks month-to-date `calls_made`; it makes
-  calls until the cap then stops mid-run (`partial`); if already at/over budget it makes zero
-  calls (`blocked`).
-- Each run records `provider`, `calls_made`, `estimated_cost_cents`, `candidates_found`, and
-  `status`. Providers back off on 429/5xx. Provider + fetcher are behind interfaces; tests use
-  fakes (no network).
+  boundary**: budget is **reserved** under the settings row lock before any provider call (so
+  concurrent scans can't overrun); if already at/over budget it makes zero calls (`blocked`), and
+  a scan reserving fewer than its full work list ends `partial`.
+- **Only calls SerpApi actually bills count** against `calls_made`/`estimated_cost_cents`. The
+  reservation is **reconciled down** to the billed total when the run finishes: a query that
+  returns an **empty result set** (SerpApi answers `200` + a benign "hasn't returned any results"
+  error — common for `site:` name sweeps) is **not billed** and is recorded as 0 calls / 0 cost,
+  **not** as a failure. A real provider failure (bad key, quota, rate limit, HTTP/network) stops
+  the run, records `status=failed` with a **sanitized reason** on `run.error` (surfaced in the UI),
+  and counts only the calls billed before it — never the reserved amount.
+- Each run records `provider`, `calls_made`, `estimated_cost_cents`, `candidates_found`, `status`,
+  and (on failure) `error`. Providers back off on 429/5xx. Provider + fetcher are behind
+  interfaces; tests use fakes (no network).
 - **Cost per provider** is logged per call (`discovery.provider_cost provider=… calls=…
   cost_cents=…`, no secrets) and a `cost_by_provider` breakdown is folded into the
   `discovery.scan_run` audit meta when more than one provider runs.
@@ -146,6 +153,23 @@ pip install -e ".[ml]" && python -m playwright install chromium
 ```
 Safe mode stays on (CSAM fake), so risky-term queries are suppressed and the banner shows —
 **test with your own photos only**.
+
+### Exposing assets to reverse-image providers (dev tunnel)
+Reverse-image scans hand the provider a **presigned URL to the subject's asset**, which the
+provider's servers (Google Lens, Yandex) fetch directly. Locally MinIO presigns a **`localhost`**
+URL the providers can't reach, so a real reverse scan returns **0 matches** (not an error — the
+provider just sees nothing). For dev, expose MinIO through a tunnel and sign asset URLs against it:
+
+```
+make lens-tunnel                         # cloudflared quick tunnel → http://localhost:9000
+# then in .env, with the printed hostname:
+DISCOVERY_ASSET_PUBLIC_BASE_URL=https://<name>.trycloudflare.com
+```
+`generate_download_url(..., public_base_url=…)` then signs the presigned URL (SigV4) against the
+tunnel host so the signature matches what the provider connects to; the tunnel forwards to MinIO.
+This is **dev-only**: `Settings.dev_lens_asset_base_url` returns the base **only when APP_ENV=dev**,
+so setting the env var in staging/production has no effect. **Production** needs nothing here — R2
+presigned URLs are already public, with a short TTL (`storage_signed_url_ttl_seconds`, default 300s).
 
 ## Audit
 
