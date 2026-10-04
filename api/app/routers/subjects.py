@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, computed_field, field_validator
 from sqlalchemy.orm import Session
 
 from api.app.auth.deps import (
@@ -85,6 +85,15 @@ class SubjectOut(BaseModel):
     notes: str | None
     created_at: datetime
     updated_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def name_sweep_warning(self) -> str | None:
+        """None when impersonation name sweeps have a precise term (a handle or full name);
+        otherwise a hint to add one (single first names are too broad). See services/discovery."""
+        from api.app.services.discovery import name_sweep_warning
+
+        return name_sweep_warning(self.stage_names, self.handles)
 
 
 class PreviewRow(BaseModel):

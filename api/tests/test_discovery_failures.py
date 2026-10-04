@@ -69,6 +69,72 @@ def test_serpapi_invalid_key_raises_with_reason(monkeypatch: pytest.MonkeyPatch)
     assert "SECRETKEY" not in message  # never leaks our key
 
 
+def _ok_response(url, params=None, timeout=None):
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda req: httpx.Response(200, json={"organic_results": []})
+        )
+    )
+    try:
+        return client.get(url, params=params)
+    finally:
+        client.close()
+
+
+def test_get_json_retries_transient_timeout_then_succeeds(monkeypatch: pytest.MonkeyPatch):
+    import api.app.providers.serpapi as sp
+
+    calls = {"n": 0}
+
+    def _flaky(url, params=None, timeout=None):
+        calls["n"] += 1
+        if calls["n"] < 3:  # two transient timeouts, then a good response
+            raise httpx.ReadTimeout("slow", request=httpx.Request("GET", url))
+        return _ok_response(url, params, timeout)
+
+    monkeypatch.setattr(sp.time, "sleep", lambda _s: None)  # no real backoff wait in tests
+    monkeypatch.setattr(sp.httpx, "get", _flaky)
+    _data, billed = sp._get_json({"engine": "google", "q": "x"}, retries=3, timeout=1)
+    assert billed and calls["n"] == 3
+
+
+def test_get_json_raises_after_exhausting_timeout_retries(monkeypatch: pytest.MonkeyPatch):
+    import api.app.providers.serpapi as sp
+
+    def _always_timeout(url, params=None, timeout=None):
+        raise httpx.ConnectTimeout("nope", request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(sp.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(sp.httpx, "get", _always_timeout)
+    with pytest.raises(ProviderError) as exc:
+        sp._get_json({"engine": "google", "q": "x"}, retries=2, timeout=1)
+    assert "request error" in str(exc.value) and "attempts" in str(exc.value)
+
+
+def test_get_json_retries_429_then_succeeds(monkeypatch: pytest.MonkeyPatch):
+    import api.app.providers.serpapi as sp
+
+    calls = {"n": 0}
+
+    def _flaky(url, params=None, timeout=None):
+        calls["n"] += 1
+        status = 429 if calls["n"] == 1 else 200
+        client = httpx.Client(
+            transport=httpx.MockTransport(
+                lambda req: httpx.Response(status, json={"organic_results": []})
+            )
+        )
+        try:
+            return client.get(url, params=params)
+        finally:
+            client.close()
+
+    monkeypatch.setattr(sp.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(sp.httpx, "get", _flaky)
+    _data, billed = sp._get_json({"engine": "google", "q": "x"}, retries=3, timeout=1)
+    assert billed and calls["n"] == 2
+
+
 # ── worker level ──────────────────────────────────────────────────────────────
 
 

@@ -117,6 +117,14 @@ class Settings(BaseSettings):
     tineye_api_key: str = ""
     serpapi_cost_cents_per_call: int = 1
     tineye_cost_cents_per_call: int = 20
+    # SerpApi can be slow under load; a single transient ReadTimeout shouldn't fail a whole run.
+    # Longer per-request timeout + bounded retries with exponential backoff for transient errors
+    # (timeouts, 429, 5xx). Already-collected results from earlier queries in the run are kept.
+    serpapi_timeout_seconds: float = 30.0
+    serpapi_max_retries: int = 3
+    # Cap NEW candidates created per run per source ("reverse" | "keyword" | "name_sweep") so one
+    # broad/bad query (e.g. a common first name) can't flood the review inbox.
+    discovery_max_candidates_per_source_per_run: int = 25
     # DEV ONLY: a public base URL (e.g. a `make lens-tunnel` cloudflared quick tunnel to local
     # MinIO) used to sign reverse-image asset URLs so Google Lens/Yandex can actually fetch them.
     # Local MinIO presigned URLs point at localhost, which the providers can't reach (→ 0 matches).

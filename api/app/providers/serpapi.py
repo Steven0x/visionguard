@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from api.app.config import get_settings
 from api.app.providers.base import ProviderError, ProviderResponse, ProviderResult
 
 _SERPAPI_URL = "https://serpapi.com/search"
@@ -31,17 +32,30 @@ def _is_no_results(message: str) -> bool:
 
 
 def _get_json(
-    params: dict[str, str], *, retries: int = 3, timeout: float = 20.0
+    params: dict[str, str], *, retries: int | None = None, timeout: float | None = None
 ) -> tuple[dict[str, Any], bool]:
     """Return (data, billed). `billed` is False for an empty-result-set response (not charged by
     SerpApi); True for a normal successful search. Raises a sanitized ProviderError on a real
-    failure — the message is safe to show in the UI / store on run.error."""
+    failure — the message is safe to show in the UI / store on run.error.
+
+    Transient failures (network/timeout errors, 429, 5xx) are retried with exponential backoff up
+    to `retries` times before failing, so a single slow response doesn't kill a whole run."""
+    settings = get_settings()
+    retries = settings.serpapi_max_retries if retries is None else retries
+    timeout = settings.serpapi_timeout_seconds if timeout is None else timeout
     delay = 0.5
     for attempt in range(retries + 1):
         try:
             response = httpx.get(_SERPAPI_URL, params=params, timeout=timeout)
         except httpx.RequestError as exc:
-            raise ProviderError(f"SerpApi request error ({type(exc).__name__})") from None
+            # Timeouts and other transient transport errors — retry, then fail with the reason.
+            if attempt < retries:
+                time.sleep(delay)
+                delay *= 2
+                continue
+            raise ProviderError(
+                f"SerpApi request error ({type(exc).__name__}) after {attempt + 1} attempts"
+            ) from None
         if response.status_code in _RETRY_STATUS and attempt < retries:
             time.sleep(delay)
             delay *= 2

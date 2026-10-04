@@ -38,12 +38,20 @@ from api.app.services.claim_support import (
 from api.app.services.csam_incidents import record_incident
 from api.app.services.keywords import identifiers as get_identifiers
 from api.app.services.scoring import apply_scoring
+from api.app.services.subjects import normalize_handles
 from api.app.storage import get_storage
 from api.app.storage.keys import object_key
 
 _TRACKING_KEYS = {
     "gclid", "fbclid", "mc_eid", "mc_cid", "igshid", "yclid", "ref_src", "_ga",
 }
+
+# Telegram web-preview hosts collapse to t.me. Its channel-preview pages paginate/search with
+# `?before=`/`?after=`/`?q=` params — SerpApi returns dozens of these for the SAME channel (or
+# message), so a name sweep floods the inbox with near-duplicates. Drop those params so a channel
+# (or a specific /channel/<msgid>) dedupes to a single candidate. See docs/specs/discovery.md.
+_TELEGRAM_HOSTS = {"t.me", "telegram.me", "www.t.me", "www.telegram.me"}
+_TELEGRAM_DROP_PARAMS = {"before", "after", "q"}
 
 
 class DiscoveryNotAuthorized(Exception):
@@ -68,12 +76,19 @@ def canonicalize_url(url: str) -> str | None:
         port = parts.port
     except ValueError:
         return None
+    is_telegram = host in _TELEGRAM_HOSTS
+    if is_telegram:
+        host = "t.me"
     default_port = 443 if scheme == "https" else 80
     netloc = host if port in (None, default_port) else f"{host}:{port}"
     query = sorted(
         (k, v)
         for k, v in parse_qsl(parts.query, keep_blank_values=True)
-        if not (k.lower().startswith("utm_") or k.lower() in _TRACKING_KEYS)
+        if not (
+            k.lower().startswith("utm_")
+            or k.lower() in _TRACKING_KEYS
+            or (is_telegram and k.lower() in _TELEGRAM_DROP_PARAMS)
+        )
     )
     return urlunsplit((scheme, netloc, parts.path or "/", urlencode(query), ""))
 
@@ -439,18 +454,44 @@ def yandex_reverse_allowed(session: Session, subject_id: int) -> bool:
     )
 
 
+def name_sweep_terms(stage_names: list[str], handles: list[str]) -> list[str]:
+    """Terms precise enough for an impersonation name sweep: every handle (exact, unique-ish) plus
+    only MULTI-TOKEN stage names (full names). A single common first name like "Steven" matches
+    thousands of unrelated accounts and floods the inbox, so single-token names are excluded.
+    Handles are preferred — they are exact. Deduped case-insensitively, order preserved."""
+    terms: list[str] = []
+    seen: set[str] = set()
+    full_names = [s for s in stage_names if len(s.split()) >= 2]
+    for term in [*normalize_handles(handles), *full_names]:
+        key = term.lower()
+        if key not in seen:
+            seen.add(key)
+            terms.append(term)
+    return terms
+
+
+def name_sweep_warning(stage_names: list[str], handles: list[str]) -> str | None:
+    """A UI warning when no term is precise enough to sweep for impersonation (None if some is)."""
+    if name_sweep_terms(stage_names, handles):
+        return None
+    return "Add a full name or handle to enable name sweeps (a single first name is too broad)."
+
+
 def build_keyword_queries(
     session: Session, subject: Subject, *, safe_mode: bool
 ) -> list[KeywordQuery]:
     """Keyword queries for a subject: the plain identifiers PLUS per-platform impersonation name
-    sweeps (`site:<platform> "<identifier>"`, suggested claim = impersonation). In safe mode (no
-    real CSAM scanner) any query containing a risky term is dropped (CLAUDE.md #7)."""
-    identifiers = get_identifiers(session, subject)
-    queries: list[KeywordQuery] = [KeywordQuery(i, "keyword", None) for i in identifiers]
-    for identifier in identifiers:
+    sweeps (`site:<platform> "<term>"`, suggested claim = impersonation). Name sweeps only use
+    terms precise enough to matter — handles and full (multi-token) names — never a bare first
+    name (see `name_sweep_terms`). In safe mode (no real CSAM scanner) any query containing a
+    risky term is dropped (CLAUDE.md #7)."""
+    queries: list[KeywordQuery] = [
+        KeywordQuery(i, "keyword", None) for i in get_identifiers(session, subject)
+    ]
+    for term in name_sweep_terms(subject.stage_names, subject.handles):
         for site in NAME_SWEEP_SITES:
             queries.append(
-                KeywordQuery(f'site:{site} "{identifier}"', "name_sweep", "impersonation")
+                KeywordQuery(f'site:{site} "{term}"', "name_sweep", "impersonation")
             )
     if safe_mode:
         queries = [q for q in queries if not _is_risky(q.text)]

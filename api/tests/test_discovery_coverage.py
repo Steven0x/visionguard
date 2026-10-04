@@ -95,7 +95,10 @@ def test_second_engine_adds_a_provider(monkeypatch: pytest.MonkeyPatch):
 def test_build_keyword_queries_name_sweep_and_safe_mode(db, new_workspace):
     schema = new_workspace.schema_name
     with tenant_session(schema) as s:
-        subject = Subject(legal_name="x", stage_names=["StageName"], handles=["@handle"])
+        # Single-token stage name ("Steven") is NOT swept; the handle + a full name are.
+        subject = Subject(
+            legal_name="x", stage_names=["Steven", "Steven Nakhwal"], handles=["@handle"]
+        )
         s.add(subject)
         s.flush()
         s.add(SubjectKeyword(subject_id=subject.id, keyword="leaked"))  # a risky keyword
@@ -104,28 +107,34 @@ def test_build_keyword_queries_name_sweep_and_safe_mode(db, new_workspace):
         unsafe = svc.build_keyword_queries(s, subject, safe_mode=False)
         texts = {q.text for q in unsafe}
         assert "leaked" in texts  # plain identifier query present
-        sweep = next(q for q in unsafe if q.text == 'site:instagram.com "StageName"')
+        # name sweeps come from the handle + the full name, never the bare "Steven".
+        assert 'site:instagram.com "handle"' in texts
+        assert 'site:instagram.com "Steven Nakhwal"' in texts
+        assert not any(q.source == "name_sweep" and q.text.endswith('"Steven"') for q in unsafe)
+        sweep = next(q for q in unsafe if q.text == 'site:instagram.com "handle"')
         assert sweep.source == "name_sweep" and sweep.suggested_claim == "impersonation"
-        # every platform is swept for each identifier
-        assert sum(1 for q in unsafe if q.source == "name_sweep") == len(svc.NAME_SWEEP_SITES) * 3
+        # two eligible terms (handle + full name) × every platform.
+        assert sum(1 for q in unsafe if q.source == "name_sweep") == len(svc.NAME_SWEEP_SITES) * 2
 
         safe = svc.build_keyword_queries(s, subject, safe_mode=True)
         safe_texts = {q.text for q in safe}
         assert "leaked" not in safe_texts  # risky identifier dropped
-        assert 'site:instagram.com "leaked"' not in safe_texts  # risky sweep dropped too
-        assert 'site:instagram.com "StageName"' in safe_texts  # non-risky sweeps survive
+        assert 'site:instagram.com "handle"' in safe_texts  # non-risky sweeps survive
 
 
 def test_risky_term_matching_is_word_boundary(db, new_workspace):
     schema = new_workspace.schema_name
     with tenant_session(schema) as s:
-        subject = Subject(legal_name="x", stage_names=["Freeman", "Nude Model"], handles=[])
+        subject = Subject(
+            legal_name="x", stage_names=["Freeman", "Jane Smith", "Nude Model"], handles=[]
+        )
         s.add(subject)
         s.flush()
         safe = {q.text for q in svc.build_keyword_queries(s, subject, safe_mode=True)}
     assert "Freeman" in safe  # contains "free" but not as a whole word → kept
-    assert 'site:instagram.com "Freeman"' in safe
+    assert 'site:instagram.com "Jane Smith"' in safe  # full name, not risky → swept + kept
     assert "Nude Model" not in safe  # "nude" is a whole word → dropped
+    assert not any("Nude Model" in t for t in safe)  # its sweeps are dropped too
 
 
 def test_second_provider_respects_budget(db, new_workspace, monkeypatch: pytest.MonkeyPatch):
