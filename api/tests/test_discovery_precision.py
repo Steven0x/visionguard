@@ -50,8 +50,49 @@ def test_build_keyword_queries_skips_single_token_name_sweeps(db, new_workspace)
         subject = s.get(Subject, sid)
         assert subject is not None
         queries = build_keyword_queries(s, subject, safe_mode=False)
+    texts = {q.text for q in queries}
     assert not any(q.source == "name_sweep" for q in queries)  # no flood from "Steven"
-    assert any(q.text == "Steven" and q.source == "keyword" for q in queries)
+    assert "Steven" not in texts  # never a standalone Google query
+    assert "Steven onlyfans" in texts  # only combined with a qualifier (risky allowed here)
+
+
+def test_single_token_stage_name_only_runs_combined_with_a_qualifier(db, new_workspace):
+    schema = new_workspace.schema_name
+    sid, _ = authorized_subject(schema, stage_names=("Steven",), handles=("@stevenn",))
+    with tenant_session(schema) as s:
+        subject = s.get(Subject, sid)
+        assert subject is not None
+        queries = build_keyword_queries(s, subject, safe_mode=False)
+    texts = {q.text for q in queries}
+    assert "Steven" not in texts  # not standalone
+    assert "stevenn" in texts  # the handle itself is specific → standalone
+    assert "Steven stevenn" in texts  # combined with the handle
+    assert "Steven onlyfans" in texts  # combined with a platform term (risky allowed)
+
+
+def test_single_token_combined_with_full_name(db, new_workspace):
+    schema = new_workspace.schema_name
+    sid, _ = authorized_subject(schema, stage_names=("Steven", "Steven Nakhwal"))
+    with tenant_session(schema) as s:
+        subject = s.get(Subject, sid)
+        assert subject is not None
+        texts = {q.text for q in build_keyword_queries(s, subject, safe_mode=False)}
+    assert "Steven Nakhwal" in texts  # full name standalone
+    assert "Steven" not in texts  # single token never standalone
+    assert "Steven Steven Nakhwal" in texts  # combined with the full name
+
+
+def test_single_token_in_safe_mode_needs_handle_or_full_name(db, new_workspace):
+    # No handle, no full name, safe mode → platform qualifiers are suppressed, so a lone single
+    # token produces NO queries at all and the subject shows the "add a full name or handle" hint.
+    schema = new_workspace.schema_name
+    sid, _ = authorized_subject(schema, stage_names=("Steven",))
+    with tenant_session(schema) as s:
+        subject = s.get(Subject, sid)
+        assert subject is not None
+        texts = {q.text for q in build_keyword_queries(s, subject, safe_mode=True)}
+    assert not any("Steven" in t for t in texts)  # nothing searchable for a lone first name
+    assert name_sweep_warning(["Steven"], []) is not None  # same hint applies
 
 
 def test_build_keyword_queries_sweeps_full_name(db, new_workspace):

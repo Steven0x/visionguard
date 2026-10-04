@@ -52,17 +52,21 @@ All routes sit behind `require_workspace_access`.
    (off by default). All providers run under the one per-workspace budget; results are **deduped by
    canonical URL** across providers (the `unique(subject_id, source_key)` constraint +
    `_candidate_exists`).
-3. **Keyword** search from the subject's identifiers (Slice 3 `keywords.identifiers`) via
-   **SerpApi Google**, plus **impersonation name sweeps**: `site:<platform> "<term>"` for
-   `instagram.com, tiktok.com, x.com, facebook.com, t.me` (`build_keyword_queries` →
-   `NAME_SWEEP_SITES`). **Name sweeps only use precise terms** — **handles** (exact, quoted) and
-   **full, multi-token names**; a bare single-token first name (e.g. "Steven") is **skipped**
-   because it matches thousands of unrelated accounts and floods the inbox
-   (`services/discovery.name_sweep_terms`). When a subject has no precise term, name sweeps are
-   disabled and the subject carries a `name_sweep_warning` ("add a full name or handle…"), surfaced
-   on `SubjectOut` and shown in the discovery UI. Sweep candidates are tagged `source="name_sweep"`
-   with `suggested_claim="impersonation"` (the review inbox prefers that claim when supported).
-   Stored as `link` candidates.
+3. **Keyword** search via **SerpApi Google**, plus **impersonation name sweeps**:
+   `site:<platform> "<term>"` for `instagram.com, tiktok.com, x.com, facebook.com, t.me`
+   (`build_keyword_queries` → `NAME_SWEEP_SITES`). Both avoid bare single-token first names, which
+   match thousands of unrelated results:
+   - **Plain queries** run standalone only for **specific** terms — handles, explicit keywords, and
+     full (multi-token) stage names. A **single-token stage name** ("Steven") never runs alone; it
+     runs **only combined with a qualifier** — a handle, the full name, or a platform term
+     (`PLATFORM_QUALIFIERS` = onlyfans/fansly) when risky terms are allowed (not safe mode).
+   - **Name sweeps** use only **handles** (exact, quoted) and **full, multi-token names**
+     (`services/discovery.name_sweep_terms`) — never a bare first name.
+   When a subject has no precise term (no handle, no full name), name sweeps are disabled, a lone
+   single-token name is unsearchable in safe mode, and the subject carries a `name_sweep_warning`
+   ("add a full name or handle…"), surfaced on `SubjectOut` and shown in the discovery UI. Sweep
+   candidates are tagged `source="name_sweep"` with `suggested_claim="impersonation"` (the review
+   inbox prefers that claim when supported). Stored as `link` candidates.
 
 ## SSRF-safe fetcher
 

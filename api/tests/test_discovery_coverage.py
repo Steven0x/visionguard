@@ -131,10 +131,11 @@ def test_risky_term_matching_is_word_boundary(db, new_workspace):
         s.add(subject)
         s.flush()
         safe = {q.text for q in svc.build_keyword_queries(s, subject, safe_mode=True)}
-    assert "Freeman" in safe  # contains "free" but not as a whole word → kept
+    # single-token "Freeman" only runs combined; "free" is not a whole word → not suppressed.
+    assert "Freeman Jane Smith" in safe
     assert 'site:instagram.com "Jane Smith"' in safe  # full name, not risky → swept + kept
     assert "Nude Model" not in safe  # "nude" is a whole word → dropped
-    assert not any("Nude Model" in t for t in safe)  # its sweeps are dropped too
+    assert not any("Nude Model" in t for t in safe)  # its sweeps/combos are dropped too
 
 
 def test_second_provider_respects_budget(db, new_workspace, monkeypatch: pytest.MonkeyPatch):
