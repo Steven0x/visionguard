@@ -36,7 +36,7 @@ from api.app.services.claim_support import (
     subject_enforcement,
 )
 from api.app.services.csam_incidents import record_incident
-from api.app.services.keywords import identifiers as get_identifiers
+from api.app.services.keywords import list_keywords
 from api.app.services.scoring import apply_scoring
 from api.app.services.subjects import normalize_handles
 from api.app.storage import get_storage
@@ -411,6 +411,11 @@ def add_link_candidate(
 # Platforms swept for impersonation (site: searches for the subject's handles/stage names).
 NAME_SWEEP_SITES = ("instagram.com", "tiktok.com", "x.com", "facebook.com", "t.me")
 
+# Platform terms used ONLY to qualify an otherwise-too-broad single-token stage name (e.g.
+# "Steven onlyfans"). They are risky terms, so they apply only when risky terms are allowed (not
+# safe mode); in safe mode a single-token name needs a handle or full name to be searchable.
+PLATFORM_QUALIFIERS = ("onlyfans", "fansly")
+
 
 @dataclass(frozen=True)
 class KeywordQuery:
@@ -477,17 +482,50 @@ def name_sweep_warning(stage_names: list[str], handles: list[str]) -> str | None
     return "Add a full name or handle to enable name sweeps (a single first name is too broad)."
 
 
+def _dedupe_ci(values: list[str]) -> list[str]:
+    """Case-insensitive dedupe, order + original casing preserved."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for v in values:
+        key = v.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(v)
+    return out
+
+
 def build_keyword_queries(
     session: Session, subject: Subject, *, safe_mode: bool
 ) -> list[KeywordQuery]:
-    """Keyword queries for a subject: the plain identifiers PLUS per-platform impersonation name
-    sweeps (`site:<platform> "<term>"`, suggested claim = impersonation). Name sweeps only use
-    terms precise enough to matter — handles and full (multi-token) names — never a bare first
-    name (see `name_sweep_terms`). In safe mode (no real CSAM scanner) any query containing a
-    risky term is dropped (CLAUDE.md #7)."""
+    """Keyword queries for a subject: plain web searches PLUS per-platform impersonation name
+    sweeps (`site:<platform> "<term>"`, suggested claim = impersonation).
+
+    Both avoid bare single-token first names, which match thousands of unrelated results:
+    - **Plain queries** run standalone only for specific terms — handles, explicit keywords, and
+      full (multi-token) stage names. A single-token stage name ("Steven") runs **only combined
+      with a qualifier** — a handle, the full name, or a platform term (onlyfans/fansly) when risky
+      terms are allowed (not safe mode) — never alone.
+    - **Name sweeps** use only handles + full names (see `name_sweep_terms`).
+
+    In safe mode (no real CSAM scanner) any query containing a risky term is dropped (CLAUDE.md #7),
+    which also removes the platform-qualifier combinations."""
+    handles = normalize_handles(subject.handles)
+    keywords = [k.keyword for k in list_keywords(session, subject.id)]
+    full_names = [s for s in subject.stage_names if len(s.split()) >= 2]
+    single_names = [s for s in subject.stage_names if len(s.split()) == 1]
+
+    # Standalone plain queries: specific enough on their own (never a bare single-token name).
     queries: list[KeywordQuery] = [
-        KeywordQuery(i, "keyword", None) for i in get_identifiers(session, subject)
+        KeywordQuery(t, "keyword", None) for t in _dedupe_ci([*handles, *keywords, *full_names])
     ]
+    # A single-token stage name only with a qualifier that narrows it.
+    qualifiers = _dedupe_ci([*handles, *full_names])
+    if not safe_mode:
+        qualifiers += list(PLATFORM_QUALIFIERS)  # risky platform terms allowed
+    for name in single_names:
+        for qualifier in qualifiers:
+            queries.append(KeywordQuery(f"{name} {qualifier}", "keyword", None))
+
     for term in name_sweep_terms(subject.stage_names, subject.handles):
         for site in NAME_SWEEP_SITES:
             queries.append(
