@@ -53,11 +53,16 @@ All routes sit behind `require_workspace_access`.
    canonical URL** across providers (the `unique(subject_id, source_key)` constraint +
    `_candidate_exists`).
 3. **Keyword** search from the subject's identifiers (Slice 3 `keywords.identifiers`) via
-   **SerpApi Google**, plus per-handle **impersonation name sweeps**: `site:<platform> "<handle
-   or stage name>"` for `instagram.com, tiktok.com, x.com, facebook.com, t.me`
-   (`services/discovery.build_keyword_queries` → `NAME_SWEEP_SITES`). Sweep candidates are tagged
-   `source="name_sweep"` with `suggested_claim="impersonation"` (the review inbox prefers that
-   claim when it is supported for the subject). Stored as `link` candidates.
+   **SerpApi Google**, plus **impersonation name sweeps**: `site:<platform> "<term>"` for
+   `instagram.com, tiktok.com, x.com, facebook.com, t.me` (`build_keyword_queries` →
+   `NAME_SWEEP_SITES`). **Name sweeps only use precise terms** — **handles** (exact, quoted) and
+   **full, multi-token names**; a bare single-token first name (e.g. "Steven") is **skipped**
+   because it matches thousands of unrelated accounts and floods the inbox
+   (`services/discovery.name_sweep_terms`). When a subject has no precise term, name sweeps are
+   disabled and the subject carries a `name_sweep_warning` ("add a full name or handle…"), surfaced
+   on `SubjectOut` and shown in the discovery UI. Sweep candidates are tagged `source="name_sweep"`
+   with `suggested_claim="impersonation"` (the review inbox prefers that claim when supported).
+   Stored as `link` candidates.
 
 ## SSRF-safe fetcher
 
@@ -81,7 +86,13 @@ Each block is unit-tested with a monkeypatched resolver — no real network in t
 (`image` | `link`), `source_url`, `page_url`, and for **image** candidates only:
 `sha256`, `phash`, `embedding` (whole-image CLIP, Slice 3), `thumbnail_key`, `content_type`.
 **We never store the full-resolution found file** — only fingerprints + a small thumbnail for
-review. Dedupe: `unique(subject_id, source_url)` (+ sha256 for images).
+review. Dedupe: `unique(subject_id, source_url)` (+ sha256 for images), keyed on the **canonical**
+URL (`canonicalize_url`: lowercased scheme/host, default ports + fragment + tracking params
+dropped, query sorted). **Telegram** gets extra canonicalization: `telegram.me`/`www.` aliases
+collapse to `t.me`, and the channel-preview pagination/search params (`before`, `after`, `q`) are
+dropped — so SerpApi's dozens of `t.me/s/<channel>?before=…` hits for one channel (or one message)
+dedupe to a single candidate instead of flooding the inbox. Distinct messages
+(`t.me/s/<channel>/<id>`) stay distinct.
 
 Thumbnails of **found content may be sensitive**: stored **private**, served only via
 **short-lived signed URLs** (not audited — review galleries poll), and deleted after
@@ -127,8 +138,14 @@ point, which fails closed until a scanner is wired.
   the run, records `status=failed` with a **sanitized reason** on `run.error` (surfaced in the UI),
   and counts only the calls billed before it — never the reserved amount.
 - Each run records `provider`, `calls_made`, `estimated_cost_cents`, `candidates_found`, `status`,
-  and (on failure) `error`. Providers back off on 429/5xx. Provider + fetcher are behind
-  interfaces; tests use fakes (no network).
+  and (on failure) `error`. **Transient SerpApi failures** (timeouts, 429, 5xx) are **retried with
+  exponential backoff** (`serpapi_max_retries`, default 3) under a longer per-request timeout
+  (`serpapi_timeout_seconds`, default 30s) before the run fails — results already collected from
+  earlier queries in the run are kept. Provider + fetcher are behind interfaces; tests use fakes
+  (no network).
+- **Per-run per-source cap** (`discovery_max_candidates_per_source_per_run`, default 25): each run
+  creates at most N new candidates per `source` (`reverse` | `keyword` | `name_sweep`), so one
+  broad/bad query can't flood the inbox (and reverse stops fetching + CSAM-scanning once reached).
 - **Cost per provider** is logged per call (`discovery.provider_cost provider=… calls=…
   cost_cents=…`, no secrets) and a `cost_by_provider` breakdown is folded into the
   `discovery.scan_run` audit meta when more than one provider runs.

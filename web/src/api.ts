@@ -39,6 +39,8 @@ export interface Subject {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  /** Set when name sweeps are disabled for lack of a precise term (a handle or full name). */
+  name_sweep_warning: string | null;
 }
 
 export interface SubjectInput {
@@ -415,6 +417,9 @@ export const candidateThumbnailUrl = (token: string, wsId: number, sid: number, 
 
 export const listDiscoveryRuns = (token: string, wsId: number, sid: number) =>
   request<DiscoveryRun[]>(token, `${base(wsId, sid)}/discovery/runs`);
+
+export const getSubject = (token: string, wsId: number, sid: number) =>
+  request<Subject>(token, base(wsId, sid));
 
 export const getDiscoverySettings = (token: string, wsId: number) =>
   request<DiscoverySettings>(token, `/workspaces/${wsId}/discovery/settings`);

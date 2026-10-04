@@ -140,8 +140,13 @@ def reverse_image_scan(workspace_id: int, subject_id: int, asset_id: int) -> str
         except ProviderError as exc:
             error = str(exc)[:1000]
             logger.warning("discovery.reverse_image_scan provider error: %s", error)
+        # Cap reverse candidates per run so one bad query can't flood the inbox (also stops
+        # further fetch + CSAM work once reached).
+        cap = get_settings().discovery_max_candidates_per_source_per_run
         with tenant_session(schema) as session:
             for provider_name, result in collected:
+                if candidates >= cap:
+                    break
                 if svc.add_image_candidate(
                     session, workspace_id=workspace_id, schema=schema, subject_id=subject_id,
                     run_id=run_id, provider=provider_name, query=None,
@@ -223,8 +228,14 @@ def keyword_scan(workspace_id: int, subject_id: int) -> str:
         except ProviderError as exc:
             error = str(exc)[:1000]
             logger.warning("discovery.keyword_scan provider error: %s", error)
+        # Cap new candidates per source ("keyword" vs "name_sweep") so one broad query (e.g. a
+        # common first name) can't flood the inbox.
+        cap = get_settings().discovery_max_candidates_per_source_per_run
+        per_source: dict[str, int] = {}
         with tenant_session(schema) as session:
             for query, result in collected:
+                if per_source.get(query.source, 0) >= cap:
+                    continue
                 if svc.add_link_candidate(
                     session, subject_id=subject_id, run_id=run_id, provider=provider.name,
                     query=query.text, source_url=result.source_url, page_url=result.page_url,
@@ -232,6 +243,7 @@ def keyword_scan(workspace_id: int, subject_id: int) -> str:
                     suggested_claim=query.suggested_claim,
                 ) is not None:
                     candidates += 1
+                    per_source[query.source] = per_source.get(query.source, 0) + 1
             final_run = session.get(DiscoveryRun, run_id)
             if final_run is not None:
                 status = (
